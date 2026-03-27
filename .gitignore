@@ -1,0 +1,30 @@
+# Entorno
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+ENV/
+build/
+dist/
+
+# Archivos Temporales de Aplicación
+/tmp/ap_automation_uploads/
+backend/alembic/versions/*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (Frontend)
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
