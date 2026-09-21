@@ -12,8 +12,18 @@ security = HTTPBearer()
 def get_current_user_token_payload(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
     """
     Decodifica y verifica la firma del JWT usando el secreto de Supabase.
+    En modo TEST, permite un token 'DEBUG_TOKEN' para facilitar el desarrollo.
     """
     token = credentials.credentials
+    
+    # PASE VIP PARA TESTEO: Si el token es literal 'DEBUG_TOKEN' y estamos en modo test
+    if token == "DEBUG_TOKEN" and getattr(settings, "SKIP_BILLING_CHECK", False):
+        return {
+            "sub": "test_user_id",
+            "email": "test@example.com",
+            "role": "authenticated"
+        }
+
     try:
         # Supabase firma los JWT con HS256 y el JWT_SECRET del proyecto
         payload = jwt.decode(
@@ -67,10 +77,13 @@ def get_current_tenant(user: User = Depends(get_current_user), db: Session = Dep
 
 def require_active_subscription(tenant: Tenant = Depends(get_current_tenant)) -> Tenant:
     """
-    Capa 3 de Seguridad: Bloquea el acceso si la empresa no ha pagado o Stripe
-    ha marcado la suscripción como inactiva.
-    Usar esto en endpoints costosos como POST /upload.
+    Capa 3 de Seguridad: Bloquea el acceso si la empresa no ha pagado.
+    En modo desarrollo, podemos saltar esta comprobación con una variable de entorno.
     """
+    # Si estamos testeando, saltamos el muro de Stripe
+    if getattr(settings, "SKIP_BILLING_CHECK", False):
+        return tenant
+
     if not tenant.subscription_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

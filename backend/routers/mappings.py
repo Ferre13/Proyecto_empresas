@@ -36,6 +36,17 @@ async def detect_headers(file: UploadFile = File(...)):
         # Devolvemos el error real para depuración
         raise HTTPException(status_code=400, detail=f"Error al leer el archivo: {str(e)}")
 
+@router.get("/")
+async def get_mappings(
+    db: Session = Depends(get_db),
+    current_tenant: Tenant = Depends(get_current_tenant)
+):
+    """Obtiene las configuraciones de mapeo guardadas para el tenant."""
+    mappings = db.query(ExportMapping).filter(
+        ExportMapping.tenant_id == current_tenant.id
+    ).all()
+    return [{"erp_name": m.erp_name, "config": m.mapping_config} for m in mappings]
+
 @router.post("/")
 async def save_mapping(
     payload: dict,
@@ -43,9 +54,9 @@ async def save_mapping(
     current_tenant: Tenant = Depends(get_current_tenant)
 ):
     """Guarda la configuración de mapeo del cliente."""
-    erp_name = payload.get("erp_name")
+    erp_name = payload.get("erp_name", "Excel / CSV")
     if not erp_name:
-        raise HTTPException(status_code=400, detail="Nombre del ERP es obligatorio.")
+        raise HTTPException(status_code=400, detail="El nombre de la configuración de mapeo es obligatorio.")
 
     mapping = db.query(ExportMapping).filter(
         ExportMapping.tenant_id == current_tenant.id,
@@ -60,15 +71,30 @@ async def save_mapping(
     db.commit()
     return {"message": "Configuración de mapeo guardada exitosamente."}
 
+DEFAULT_CANONICAL_MAPPING = {
+    "Nº Factura": "invoice_number",
+    "Fecha Emisión": "issue_date",
+    "Fecha Vencimiento": "due_date",
+    "Nombre Proveedor": "supplier_name",
+    "NIF/CIF Proveedor": "supplier_tax_id",
+    "Nombre Cliente": "customer_name",
+    "NIF/CIF Cliente": "customer_tax_id",
+    "Base Imponible": "subtotal",
+    "Importe IVA": "tax_amount",
+    "Total Factura": "total_amount",
+    "Divisa": "currency"
+}
+
 @router.get("/export/{batch_id}")
 async def export_batch(
     batch_id: str,
-    erp_name: str,
+    erp_name: str = "Excel / CSV",
     db: Session = Depends(get_db),
     current_tenant: Tenant = Depends(get_current_tenant)
 ):
     """
     Pilar 4: Genera y sirve el archivo de exportación para un lote.
+    Si no hay mapeo personalizado, usa el mapeo estándar por defecto.
     """
     mapping = db.query(ExportMapping).filter(
         ExportMapping.tenant_id == current_tenant.id,
@@ -76,27 +102,37 @@ async def export_batch(
     ).first()
 
     if not mapping:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail=f"No se ha encontrado una configuración de mapeo para {erp_name}"
-        )
+        mapping = db.query(ExportMapping).filter(
+            ExportMapping.tenant_id == current_tenant.id
+        ).first()
 
+    mapping_config = mapping.mapping_config if (mapping and mapping.mapping_config) else DEFAULT_CANONICAL_MAPPING
+
+    # Intentar obtener validadas primero
     invoices = db.query(Invoice).filter(
         Invoice.batch_id == batch_id,
         Invoice.tenant_id == current_tenant.id,
         Invoice.status == "VALIDATED"
     ).all()
 
+    # Si no hay validadas expresamente, obtener todas las que tengan datos extraídos
+    if not invoices:
+        invoices = db.query(Invoice).filter(
+            Invoice.batch_id == batch_id,
+            Invoice.tenant_id == current_tenant.id,
+            Invoice.extracted_data.isnot(None)
+        ).all()
+
     if not invoices:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 
-            detail="No hay facturas validadas en este lote para exportar."
+            detail="No hay facturas procesadas con datos en este lote para exportar."
         )
 
-    excel_file = generate_erp_export(invoices, mapping.mapping_config, format="xlsx")
+    excel_file = generate_erp_export(invoices, mapping_config, format="xlsx")
 
     return StreamingResponse(
         excel_file,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename=export_{erp_name}_{batch_id}.xlsx"}
+        headers={"Content-Disposition": f"attachment; filename=export_{batch_id}.xlsx"}
     )

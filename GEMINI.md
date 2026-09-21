@@ -85,3 +85,8 @@ SaaS B2B para la automatización de cuentas por pagar. Extrae datos de facturas 
 - **IA:** Usar siempre `gemini-2.5-flash` con esquemas JSON manuales (SCHEMA) para evitar errores de la SDK con Pydantic.
 - **CORS:** Habilitado para comunicación Frontend-Backend en desarrollo.
 - **Archivos:** Siempre usar el volumen compartido para que el worker tenga acceso físico a los documentos.
+- **UI/UX Frontend (Diseño "Apple-esque"):** 
+  - **Alineación y Espaciado:** Usar diseño en caja estricto (flexbox, paddings consistentes en escala de 8px, ej. 8px, 16px, 24px).
+  - **Zero Friction (Interactividad):** Los botones inactivos deben tener `cursor: 'default'`, `opacity: 0.5` (o menor), y `pointerEvents: 'none'` para evitar falsos "hovers".
+  - **Aislamiento de Eventos (Drag & Drop):** El arrastre (drag) solo debe activarse desde un icono/mango específico (grip handle). Los inputs de texto deben funcionar con normalidad (selección, clic) sin desencadenar eventos de arrastre de su contenedor.
+  - **Estética:** Aplicar bordes muy sutiles (`rgba(0,0,0,0.05)` o `var(--border)`), radios suaves (8px a 16px), y transiciones CSS fluidas (`cubic-bezier`). Evitar el aspecto nativo y tosco del navegador.

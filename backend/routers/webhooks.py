@@ -31,22 +31,42 @@ async def stripe_webhook(
     # customer.subscription.deleted -> Suscripción cancelada
     # invoice.payment_failed -> Pago rechazado
     
-    if event['type'] == 'checkout.session.completed':
-        session = event['data']['object']
-        client_reference_id = session.get('client_reference_id') # Debería ser el tenant_id
+    event_type = event['type']
+    data_object = event['data']['object']
+
+    if event_type == 'checkout.session.completed':
+        client_reference_id = data_object.get('client_reference_id') # tenant_id
+        customer_id = data_object.get('customer')
         if client_reference_id:
             tenant = db.query(Tenant).filter(Tenant.id == client_reference_id).first()
             if tenant:
                 tenant.subscription_active = True
-                tenant.stripe_customer_id = session.get('customer')
+                if customer_id:
+                    tenant.stripe_customer_id = customer_id
                 db.commit()
 
-    elif event['type'] in ['customer.subscription.deleted', 'invoice.payment_failed']:
-        subscription = event['data']['object']
-        customer_id = subscription.get('customer')
+    elif event_type == 'customer.subscription.updated':
+        customer_id = data_object.get('customer')
+        sub_status = data_object.get('status') # 'active', 'past_due', 'canceled', 'unpaid', etc.
         tenant = db.query(Tenant).filter(Tenant.stripe_customer_id == customer_id).first()
         if tenant:
-            tenant.subscription_active = False
+            tenant.subscription_active = (sub_status in ['active', 'trialing'])
             db.commit()
+
+    elif event_type in ['customer.subscription.deleted', 'invoice.payment_failed']:
+        customer_id = data_object.get('customer')
+        if customer_id:
+            tenant = db.query(Tenant).filter(Tenant.stripe_customer_id == customer_id).first()
+            if tenant:
+                tenant.subscription_active = False
+                db.commit()
+
+    elif event_type == 'invoice.paid':
+        customer_id = data_object.get('customer')
+        if customer_id:
+            tenant = db.query(Tenant).filter(Tenant.stripe_customer_id == customer_id).first()
+            if tenant:
+                tenant.subscription_active = True
+                db.commit()
 
     return {"status": "success"}
