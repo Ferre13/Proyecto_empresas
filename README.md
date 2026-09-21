@@ -11,6 +11,18 @@
 
 ---
 
+## 💼 Información Comercial y Operativa (SaaS Subscription)
+
+DocuFlow opera bajo un modelo de software como servicio (**SaaS B2B**) con suscripción mensual recurrente gestionada mediante **Stripe Billing**.
+
+* **Modelo de Precios:** Suscripción mensual de acceso completo a la plataforma web (procesamiento automatizado de lotes de facturas, triaje colaborativo y exportaciones ERP ilimitadas).
+* **Entrega del Servicio (Fulfillment):** Una vez completado el pago a través de Stripe Checkout, el acceso a la plataforma web es **inmediato** mediante autenticación de usuario.
+* **Política de Cancelación:** El cliente puede cancelar su suscripción en cualquier momento y sin permanencia directamente desde el **Stripe Customer Portal** accesible en la sección de facturación de la app. El servicio permanecerá activo hasta el final del ciclo de facturación en curso.
+* **Política de Reembolsos:** Se ofrece garantía de reembolso íntegro durante los primeros 14 días si el servicio no cumple con los requisitos del cliente o presenta incompatibilidades técnicas.
+* **Soporte y Contacto:** Para incidencias técnicas, facturación o consultas: `soporte@tudominio.com` (o tu correo personal de contacto).
+
+
+---
 ## 🚀 Visión General y Capacidades Clave
 
 * **Extracción Híbrida Inteligente (Gemini 2.5 Flash)**: Procesamiento multimodal de facturas en PDF, imágenes (JPG, PNG, WebP) o paquetes ZIP mediante esquemas JSON rigurosos (*Structured Outputs*) a temperatura `0.0`.
