@@ -1,5 +1,7 @@
 import React, { useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 const theme = {
   surface: 'var(--surface)',
@@ -21,7 +23,10 @@ function Upload() {
   const [status, setStatus] = useState('');
   const [batchId, setBatchId] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [needsSubscription, setNeedsSubscription] = useState(false);
   const fileInputRef = useRef(null);
+  const navigate = useNavigate();
+  const { billingStatus, refreshBilling } = useAuth();
 
   const handleUpload = async () => {
     if (files.length === 0) return;
@@ -31,40 +36,42 @@ function Upload() {
     }
 
     try {
-      setStatus('Sending documents...');
+      setStatus('Enviando documentos...');
       const response = await api.post('/upload/', formData);
       setBatchId(response.data.batch_id);
-      setStatus(`Processing started. Batch ID: ${response.data.batch_id}`);
+      setStatus(`Procesamiento iniciado. ID de Lote: ${response.data.batch_id}`);
+      setNeedsSubscription(false);
+      refreshBilling();
     } catch (error) {
       if (error.response && error.response.status === 403) {
-        setStatus('Subscription required to process documents.');
+        setNeedsSubscription(true);
+        setStatus(error.response?.data?.detail || 'Se requiere una suscripción activa para procesar documentos.');
       } else {
-        setStatus('Upload failed. Please try again.');
+        setStatus('Error al subir los archivos. Por favor, inténtalo de nuevo.');
       }
     }
   };
 
   const handleSubscribe = async () => {
     try {
-      setStatus('Redirecting to secure checkout...');
+      setStatus('Redirigiendo a Stripe Checkout seguro...');
       const response = await api.post('/billing/create-checkout-session');
       window.location.href = response.data.url;
     } catch (error) {
-      setStatus('Stripe connection error.');
+      setStatus('Error al conectar con la pasarela de pagos Stripe.');
     }
   };
 
   const handleManageBilling = async () => {
     try {
-      setStatus('Redirecting to Stripe Billing Portal...');
+      setStatus('Abriendo Portal de Facturación de Stripe...');
       const response = await api.post('/billing/create-portal-session');
       window.location.href = response.data.url;
     } catch (error) {
       if (error.response && error.response.status === 400) {
-        setStatus('No active subscription customer found. Launching checkout...');
         handleSubscribe();
       } else {
-        setStatus('Could not open billing portal.');
+        setStatus('No se pudo abrir el portal de facturación.');
       }
     }
   };
@@ -144,14 +151,54 @@ function Upload() {
         }
       `}</style>
       
+      {/* Banner de Estado de Prueba / Suscripción */}
+      {billingStatus?.is_trial && (
+        <div style={{
+          padding: '14px 20px',
+          backgroundColor: 'rgba(0, 122, 255, 0.06)',
+          border: '1px solid rgba(0, 122, 255, 0.2)',
+          borderRadius: theme.radiusSmall,
+          marginBottom: '24px',
+          fontSize: '14px',
+          color: theme.accent,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px'
+        }}>
+          <div>
+            <span>🎁 <strong>Periodo de Prueba Activo:</strong> Te quedan </span>
+            <strong style={{ fontSize: '15px' }}>{billingStatus.trial_remaining}</strong>
+            <span> de {billingStatus.trial_limit} facturas gratuitas para probar.</span>
+          </div>
+          <button
+            onClick={() => navigate('/app/settings')}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: theme.accent,
+              fontWeight: '700',
+              cursor: 'pointer',
+              textDecoration: 'underline',
+              fontSize: '13px'
+            }}
+          >
+            Activar Plan Pro ➔
+          </button>
+        </div>
+      )}
+
       {/* Upload Section */}
       <div style={{ ...cardStyle }}>
-        <h2 style={{ margin: '0 0 8px 0', fontSize: '24px', fontWeight: '700', letterSpacing: '-0.03em', color: theme.text }}>
-          Subida y Procesamiento de Facturas
-        </h2>
-        <p style={{ color: theme.textSecondary, fontSize: '15px', margin: '0 0 28px 0', lineHeight: '1.5' }}>
-          La IA extraerá automáticamente todos los datos contables y verificará la integridad matemática de cada documento.
-        </p>
+        <div style={{ marginBottom: '8px' }}>
+          <h2 style={{ margin: '0 0 6px 0', fontSize: '24px', fontWeight: '700', letterSpacing: '-0.03em', color: theme.text }}>
+            Subida y Procesamiento de Facturas
+          </h2>
+          <p style={{ color: theme.textSecondary, fontSize: '15px', margin: 0, lineHeight: '1.5' }}>
+            La IA extraerá automáticamente todos los datos contables y verificará la integridad matemática de cada documento.
+          </p>
+        </div>
         
         <input 
           type="file" 
@@ -172,7 +219,7 @@ function Upload() {
             padding: '64px 32px', 
             borderRadius: theme.radius, 
             textAlign: 'center',
-            marginBottom: '28px',
+            margin: '24px 0 28px 0',
             borderStyle: 'dashed',
             borderWidth: '2px'
           }}
@@ -206,14 +253,34 @@ function Upload() {
             marginTop: '20px', 
             padding: '16px',
             borderRadius: '12px',
-            backgroundColor: status.includes('Error') || status.includes('fallado') ? 'rgba(255, 59, 48, 0.05)' : 'rgba(0, 122, 255, 0.05)',
-            color: status.includes('Error') || status.includes('fallado') ? theme.error : theme.accent,
+            backgroundColor: status.includes('Error') || status.includes('fallado') || needsSubscription ? 'rgba(255, 59, 48, 0.05)' : 'rgba(0, 122, 255, 0.05)',
+            color: status.includes('Error') || status.includes('fallado') || needsSubscription ? theme.error : theme.accent,
             fontSize: '14px', 
             fontWeight: '600',
             textAlign: 'center',
-            border: `1px solid ${status.includes('Error') || status.includes('fallado') ? 'rgba(255, 59, 48, 0.1)' : 'rgba(0, 122, 255, 0.1)'}`
+            border: `1px solid ${status.includes('Error') || status.includes('fallado') || needsSubscription ? 'rgba(255, 59, 48, 0.1)' : 'rgba(0, 122, 255, 0.1)'}`
           }}>
             {status}
+          </div>
+        )}
+
+        {needsSubscription && (
+          <div style={{ marginTop: '16px' }}>
+            <button
+              className="apple-btn"
+              onClick={handleSubscribe}
+              style={{ 
+                ...buttonStyle(), 
+                backgroundColor: theme.success, 
+                width: '100%', 
+                height: '48px', 
+                fontSize: '15px',
+                color: '#FFF',
+                boxShadow: '0 4px 12px rgba(52, 199, 89, 0.25)'
+              }}
+            >
+              🚀 Activar Suscripción con Stripe (Checkout)
+            </button>
           </div>
         )}
       </div>
@@ -240,7 +307,7 @@ function Upload() {
           </div>
           <button 
             className="apple-btn"
-            onClick={() => window.location.href = `/batch/${batchId}`}
+            onClick={() => navigate(`/app/batch/${batchId}`)}
             style={{ ...buttonStyle(), padding: '10px 20px', fontSize: '14px' }}
           >
             Ver estado del Lote

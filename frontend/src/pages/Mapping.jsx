@@ -26,6 +26,7 @@ const CANONICAL_FIELDS = [
   { id: 'customer_tax_id', label: 'Identificación Fiscal del Cliente', defaultHeader: 'NIF/CIF Cliente', hint: 'Ej. NIFCliente, CIF_Cliente...' },
   { id: 'subtotal', label: 'Base Imponible', defaultHeader: 'Base Imponible', hint: 'Ej. BaseImponible, Subtotal, NetAmount...' },
   { id: 'tax_amount', label: 'Cuota de Impuestos (IVA)', defaultHeader: 'Importe IVA', hint: 'Ej. IVA, Impuestos, TaxTotal...' },
+  { id: 'retention_amount', label: 'Retención IRPF', defaultHeader: 'Retención IRPF', hint: 'Ej. Retencion, IRPF, Retention...' },
   { id: 'total_amount', label: 'Importe Total de Factura', defaultHeader: 'Total Factura', hint: 'Ej. Total, ImporteTotal, GrossAmount...' },
   { id: 'currency', label: 'Moneda de Facturación', defaultHeader: 'Divisa', hint: 'Ej. Moneda, Divisa, Currency...' },
 ];

@@ -26,8 +26,11 @@ function BatchList() {
     try {
       const res = await api.get('/upload/batches');
       setBatches(res.data);
+      const isAnyActive = res.data.some(b => b.status === 'PROCESSING' || b.status === 'PENDING');
+      return isAnyActive;
     } catch (err) {
       console.error("Error loading batches", err);
+      return false;
     }
   };
 
@@ -49,7 +52,12 @@ function BatchList() {
 
   useEffect(() => {
     fetchBatches();
-    const interval = setInterval(fetchBatches, 5000);
+    const interval = setInterval(async () => {
+      const isAnyActive = await fetchBatches();
+      if (!isAnyActive) {
+        clearInterval(interval);
+      }
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -107,7 +115,7 @@ function BatchList() {
                 key={batch.id} 
                 className="apple-card clickable-card" 
                 style={cardStyle}
-                onClick={() => navigate(`/batch/${batch.id}`)}
+                onClick={() => navigate(`/app/batch/${batch.id}`)}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
                   <div style={{ 

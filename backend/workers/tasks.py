@@ -12,6 +12,8 @@ from core.config import settings
 # Configurar genai para los workers
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
+from datetime import datetime, timedelta
+
 @celery_app.task(name="process_invoice_task", bind=True, max_retries=3)
 def process_invoice_task(self, invoice_id: str, tenant_id: str):
     db = SessionLocal()
@@ -27,18 +29,23 @@ def process_invoice_task(self, invoice_id: str, tenant_id: str):
         invoice.status = "PROCESSING"
         db.commit()
 
-        # Determinar mime_type
-        ext = invoice.original_filename.lower().split('.')[-1]
-        if ext == 'pdf':
-            mime_type = "application/pdf"
-        elif ext in ['jpg', 'jpeg', 'png', 'webp']:
-            mime_type = f"image/{ext if ext != 'jpg' else 'jpeg'}"
-        else:
-            mime_type = "application/octet-stream" # Fallback
+        # Pilar 1: Determinar si procesamos como texto plano (Excel/Word) o visual (PDF/Imágenes)
+        mode, extracted_text = route_file_and_extract_text(invoice.temp_file_path)
 
-        # Llamada a Gemini 2.5 Flash
         try:
-            result = extract_invoice_data_with_gemini(invoice.temp_file_path, mime_type)
+            if mode == 'text' and extracted_text:
+                result = extract_invoice_data_with_gemini(text_content=extracted_text)
+            else:
+                ext = invoice.original_filename.lower().split('.')[-1]
+                if ext == 'pdf':
+                    mime_type = "application/pdf"
+                elif ext in ['jpg', 'jpeg', 'png', 'webp']:
+                    mime_type = f"image/{ext if ext != 'jpg' else 'jpeg'}"
+                else:
+                    mime_type = "application/octet-stream"
+
+                result = extract_invoice_data_with_gemini(file_path=invoice.temp_file_path, mime_type=mime_type)
+
             invoice.is_valid_invoice = result.get("is_valid_invoice", False)
             invoice.extracted_data = result
             
@@ -49,24 +56,26 @@ def process_invoice_task(self, invoice_id: str, tenant_id: str):
                 invoice.status = "REQUIRES_REVIEW"
             else:
                 invoice.status = "VALIDATED"
-        except Exception as e:
-            print(f"Error extracting data for {invoice_id}: {e}")
-            invoice.status = "FAILED"
-            
-        db.commit()
-        check_batch_status(invoice.batch_id, db)
-        return f"Invoice {invoice_id} processed"
+                
+            db.commit()
+            check_batch_status(invoice.batch_id, db)
+            return f"Invoice {invoice_id} processed"
 
-    except Exception as exc:
-        db.rollback()
-        if self.request.retries >= self.max_retries:
-            # Si ya se agotaron los reintentos, marcar como fallido definitivamente
-            invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
-            if invoice:
+        except Exception as e:
+            print(f"Error procesando factura {invoice_id} (intento {self.request.retries + 1}/{self.max_retries}): {e}")
+            if self.request.retries < self.max_retries:
+                db.rollback()
+                raise self.retry(exc=e, countdown=15)
+            else:
                 invoice.status = "FAILED"
                 db.commit()
                 check_batch_status(invoice.batch_id, db)
-        raise self.retry(exc=exc, countdown=60)
+                return f"Invoice {invoice_id} failed after retries: {str(e)}"
+
+    except Exception as exc:
+        db.rollback()
+        # Si fue relanzado por self.retry(), propagarlo a Celery
+        raise exc
     finally:
         db.close()
 
@@ -88,3 +97,33 @@ def check_batch_status(batch_id: str, db):
         batch.status = "COMPLETED"
         
     db.commit()
+
+@celery_app.task(name="purge_old_files_task")
+def purge_old_files_task():
+    """
+    Pilar 3 (Stateless / RGPD):
+    Purga archivos temporales locales con más de 24 horas de antigüedad.
+    """
+    db = SessionLocal()
+    try:
+        threshold = datetime.utcnow() - timedelta(hours=24)
+        old_invoices = db.query(Invoice).filter(
+            Invoice.created_at < threshold,
+            Invoice.temp_file_path.isnot(None)
+        ).all()
+
+        purged_count = 0
+        for inv in old_invoices:
+            if inv.temp_file_path and os.path.exists(inv.temp_file_path):
+                try:
+                    os.remove(inv.temp_file_path)
+                    purged_count += 1
+                except Exception as e:
+                    print(f"Error eliminando archivo {inv.temp_file_path}: {e}")
+            inv.temp_file_path = None
+        
+        db.commit()
+        print(f"Purga RGPD: {purged_count} archivos físicos eliminados tras superar 24 horas.")
+        return f"Purged {purged_count} files"
+    finally:
+        db.close()

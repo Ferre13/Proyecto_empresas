@@ -28,6 +28,11 @@ celery_app.conf.update(
     task_time_limit=300,        # 5 minutos máximo de procesamiento (soft limit o hard limit)
     task_soft_time_limit=240,   # A los 4 minutos lanza una excepción que podemos capturar
     
-    # Pilar 3 (Stateless): Configurar una tarea programada (Beat) para purgar la DB/archivos
-    # Se configuraría aquí el beat_schedule para ejecutar una tarea ej. cada medianoche.
+    # Pilar 3 (Stateless / RGPD): Purga periódica cada hora de archivos con más de 24h
+    beat_schedule={
+        'purge-old-files-every-hour': {
+            'task': 'purge_old_files_task',
+            'schedule': 3600.0, # Cada hora ejecuta la purga de archivos de más de 24h
+        },
+    }
 )

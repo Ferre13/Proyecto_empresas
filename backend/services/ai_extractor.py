@@ -30,6 +30,7 @@ SCHEMA = {
         "customer_tax_id": {"type": "string"},
         "subtotal": {"type": "number"},
         "tax_amount": {"type": "number"},
+        "retention_amount": {"type": "number", "description": "Importe de retención IRPF si aplica"},
         "total_amount": {"type": "number"},
         "currency": {"type": "string", "description": "Código ISO ej. EUR"},
         "line_items": {
@@ -49,28 +50,60 @@ SCHEMA = {
     "required": ["is_valid_invoice"]
 }
 
-def extract_invoice_data_with_gemini(file_path: str, mime_type: str) -> Dict[str, Any]:
-    # Paso 1: Subir el archivo (Stateless Pilar 3)
-    uploaded_file = genai.upload_file(path=file_path, mime_type=mime_type)
-    
-    try:
-        model = genai.GenerativeModel(
-            model_name=MODEL_NAME,
-            system_instruction=SYSTEM_PROMPT,
+def clean_json_response(raw_text: str) -> Dict[str, Any]:
+    """Limpia posibles bloques markdown o caracteres extraños antes de parsear."""
+    text = raw_text.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    return json.loads(text)
+
+def extract_invoice_data_with_gemini(
+    file_path: Optional[str] = None, 
+    mime_type: Optional[str] = None,
+    text_content: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Extrae datos de la factura utilizando Gemini 2.5 Flash.
+    Soporta modo visual (PDF/Imágenes) mediante genai.upload_file y modo texto (Word/Excel/CSV).
+    """
+    model = genai.GenerativeModel(
+        model_name=MODEL_NAME,
+        system_instruction=SYSTEM_PROMPT,
+    )
+    generation_config = genai.GenerationConfig(
+        response_mime_type="application/json",
+        response_schema=SCHEMA,
+        temperature=0.0,
+    )
+
+    if text_content:
+        # Modo Texto (Word/Excel/CSV) - Ahorro de ancho de banda y tokens
+        prompt = (
+            f"A continuación se presenta el contenido de texto extraído de un documento:\n\n"
+            f"{text_content}\n\n"
+            f"Extrae los datos financieros de esta factura según el esquema JSON."
         )
-        
-        # Paso 2: Generar contenido con Structured Outputs (Pilar 4)
+        response = model.generate_content(prompt, generation_config=generation_config)
+        return clean_json_response(response.text)
+
+    # Modo Visual / Binario (PDF, JPG, PNG)
+    uploaded_file = None
+    try:
+        uploaded_file = genai.upload_file(path=file_path, mime_type=mime_type)
         response = model.generate_content(
             [uploaded_file, "Extrae los datos financieros de esta factura según el esquema JSON."],
-            generation_config=genai.GenerationConfig(
-                response_mime_type="application/json",
-                response_schema=SCHEMA,
-                temperature=0.0,
-            )
+            generation_config=generation_config
         )
-        
-        return json.loads(response.text)
-        
+        return clean_json_response(response.text)
     finally:
-        # Paso 3: Borrar archivo de Google (Muro Legal)
-        genai.delete_file(uploaded_file.name)
+        # Paso 3: Borrar archivo de Google (Muro Legal / RGPD)
+        if uploaded_file is not None:
+            try:
+                genai.delete_file(uploaded_file.name)
+            except Exception as e:
+                print(f"Advertencia eliminando archivo temporal en Gemini: {e}")

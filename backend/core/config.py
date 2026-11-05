@@ -7,8 +7,11 @@ class Settings(BaseSettings):
     # Message Broker / Celery
     REDIS_URL: str = "redis://localhost:6379/0"
     
-    # Seguridad Supabase JWT
-    SUPABASE_JWT_SECRET: str = "your-supabase-jwt-secret-here"
+    # Seguridad Supabase (Nuevas llaves API y Auth)
+    SUPABASE_URL: str = "https://jfflukpqcsrdhezzoeos.supabase.co"
+    SUPABASE_KEY: str = ""
+    SUPABASE_SECRET_KEY: str = ""
+    SUPABASE_JWT_SECRET: str = ""
     
     # IA: Gemini
     GEMINI_API_KEY: str = "your-gemini-api-key-here"

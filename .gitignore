@@ -19,6 +19,8 @@ dist/
 # Archivos Temporales de Aplicación
 /tmp/ap_automation_uploads/
 backend/alembic/versions/*.pyc
+backend/celerybeat-schedule*
+celerybeat-schedule*
 
 # OS
 .DS_Store
@@ -28,3 +30,41 @@ Thumbs.db
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+
+# Testing & Cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Agent & IDE config folders
+.adal/
+.agents/
+.augment/
+.claude/
+.codebuddy/
+.commandcode/
+.continue/
+.cortex/
+.crush/
+.factory/
+.goose/
+.iflow/
+.junie/
+.kilocode/
+.kiro/
+.kode/
+.mcpjam/
+.mux/
+.neovate/
+.openhands/
+.pi/
+.pochi/
+.qoder/
+.qwen/
+.roo/
+.trae/
+.vibe/
+.windsurf/
+.zencoder/
+skills/
+skills-lock.json

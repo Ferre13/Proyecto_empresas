@@ -25,15 +25,20 @@ async def detect_headers(file: UploadFile = File(...)):
         # Usamos io.BytesIO para manejar el archivo en memoria sin guardarlo en disco (Pilar 3)
         if ext == 'csv':
             df = pd.read_csv(io.BytesIO(contents), nrows=0)
-        elif ext in ['xlsx', 'xls']:
-            # Forzamos openpyxl para leer archivos Excel modernos
+        elif ext in ['xlsx']:
             df = pd.read_excel(io.BytesIO(contents), nrows=0, engine='openpyxl')
+        elif ext in ['xls']:
+            try:
+                df = pd.read_excel(io.BytesIO(contents), nrows=0)
+            except Exception:
+                raise HTTPException(status_code=400, detail="Los archivos .xls antiguos de Excel 97-2003 no son compatibles. Por favor, guárdalo como .xlsx o .csv")
         else:
             raise HTTPException(status_code=400, detail="Formato de archivo no soportado. Usa .csv o .xlsx")
             
         return {"columns": df.columns.tolist()}
+    except HTTPException:
+        raise
     except Exception as e:
-        # Devolvemos el error real para depuración
         raise HTTPException(status_code=400, detail=f"Error al leer el archivo: {str(e)}")
 
 @router.get("/")
@@ -81,6 +86,7 @@ DEFAULT_CANONICAL_MAPPING = {
     "NIF/CIF Cliente": "customer_tax_id",
     "Base Imponible": "subtotal",
     "Importe IVA": "tax_amount",
+    "Retención IRPF": "retention_amount",
     "Total Factura": "total_amount",
     "Divisa": "currency"
 }

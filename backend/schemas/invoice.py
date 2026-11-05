@@ -29,7 +29,8 @@ class CanonicalInvoiceSchema(BaseModel):
     
     subtotal: Optional[float] = Field(None, description="Base imponible.")
     tax_amount: Optional[float] = Field(None, description="Total impuestos.")
+    retention_amount: Optional[float] = Field(None, description="Importe de retención IRPF si aplica.")
     total_amount: Optional[float] = Field(None, description="Total a pagar.")
     currency: Optional[str] = Field(None, description="Moneda (EUR, USD, etc).")
     
-    line_items: List[InvoiceLineItem] = Field(description="Lista de productos/servicios.")
+    line_items: List[InvoiceLineItem] = Field(default_factory=list, description="Lista de productos/servicios.")

@@ -8,12 +8,13 @@ def seed_data():
     db = SessionLocal()
     try:
         # 1. Crear Tenant (Empresa)
+        from core.config import settings
         test_tenant = db.query(Tenant).filter(Tenant.name == "Empresa Test B2B").first()
         if not test_tenant:
             test_tenant = Tenant(
                 id=str(uuid.uuid4()),
                 name="Empresa Test B2B",
-                subscription_active=True # Activamos suscripción para saltar el bloqueo
+                subscription_active=getattr(settings, "SKIP_BILLING_CHECK", False)
             )
             db.add(test_tenant)
             db.flush()

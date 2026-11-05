@@ -17,8 +17,15 @@ def generate_erp_export(invoices: List[Invoice], mapping_config: Dict[str, str],
         # Creamos una fila para el Excel final basada en el mapeo
         row = {}
         for erp_column, canonical_key in mapping_config.items():
-            # Extraemos el valor del JSON canónico (manejando anidación simple si fuera necesario)
             value = inv.extracted_data.get(canonical_key, "")
+            if value is None:
+                value = ""
+            elif isinstance(value, list):
+                # Si es lista (ej. line_items), resumir descripciones
+                if canonical_key == "line_items":
+                    value = "; ".join(f"{item.get('description', '')} ({item.get('total_amount', 0)})" for item in value if isinstance(item, dict))
+                else:
+                    value = str(value)
             row[erp_column] = value
             
         export_data.append(row)

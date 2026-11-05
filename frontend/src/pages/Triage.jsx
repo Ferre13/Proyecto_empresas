@@ -28,6 +28,7 @@ const ALL_EDITABLE_FIELDS = [
   'customer_tax_id',
   'subtotal',
   'tax_amount',
+  'retention_amount',
   'total_amount',
   'currency'
 ];
@@ -43,6 +44,7 @@ const FIELD_LABELS = {
   customer_tax_id: 'NIF / CIF Cliente',
   subtotal: 'Base Imponible (€)',
   tax_amount: 'Impuestos (€)',
+  retention_amount: 'Retención IRPF (€)',
   total_amount: 'Importe Total (€)',
   currency: 'Moneda'
 };
@@ -55,7 +57,7 @@ function Triage() {
   const [invoice, setInvoice] = useState(null);
   const [formData, setFormData] = useState({});
   const [error, setError] = useState(null);
-  const [pdfUrl, setPdfUrl] = useState(null);
+  const [filePreview, setFilePreview] = useState({ url: null, isPdf: true, isImage: false });
   const [batchInvoices, setBatchInvoices] = useState([]);
   const [isDirty, setIsDirty] = useState(false);
 
@@ -65,6 +67,8 @@ function Triage() {
   const [showSecondaryFields, setShowSecondaryFields] = useState(false);
 
   useEffect(() => {
+    let createdUrl = null;
+
     const fetchInvoice = async () => {
       try {
         const res = await api.get(`/invoices/${invoiceId}`);
@@ -81,11 +85,16 @@ function Triage() {
         const batchRes = await api.get(`/upload/batches/${res.data.batch_id}/invoices`);
         setBatchInvoices(batchRes.data);
 
+        const filename = res.data.original_filename || '';
+        const isPdf = filename.toLowerCase().endsWith('.pdf');
+        const isImage = /\.(jpe?g|png|webp|gif)$/i.test(filename);
+
         const fileRes = await api.get(`/invoices/${invoiceId}/file`, { responseType: 'blob' });
-        const url = window.URL.createObjectURL(new Blob([fileRes.data], { type: 'application/pdf' }));
-        setPdfUrl(url);
+        const mimeType = isPdf ? 'application/pdf' : (fileRes.headers['content-type'] || 'image/jpeg');
+        createdUrl = window.URL.createObjectURL(new Blob([fileRes.data], { type: mimeType }));
+        setFilePreview({ url: createdUrl, isPdf, isImage });
       } catch (err) {
-        setError("Error cargando factura o PDF");
+        setError("Error cargando factura o documento");
       }
     };
 
@@ -113,6 +122,12 @@ function Triage() {
 
     fetchInvoice();
     fetchMappingConfig();
+
+    return () => {
+      if (createdUrl) {
+        window.URL.revokeObjectURL(createdUrl);
+      }
+    };
   }, [invoiceId]);
 
   const currentIndex = batchInvoices.findIndex(inv => inv.id === invoiceId);
@@ -130,9 +145,9 @@ function Triage() {
       setIsDirty(false);
       if (andNavigate) {
         if (nextInvoice) {
-          navigate(`/triage/${nextInvoice.id}`);
+          navigate(`/app/triage/${nextInvoice.id}`);
         } else {
-          navigate(`/batch/${invoice.batch_id}`);
+          navigate(`/app/batch/${invoice.batch_id}`);
         }
       }
     } catch (err) {
@@ -289,7 +304,7 @@ function Triage() {
         zIndex: 10
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <button className="apple-btn" onClick={() => safeNavigate(`/batch/${invoice.batch_id}`)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', color: theme.accent, fontWeight: '700', padding: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <button className="apple-btn" onClick={() => safeNavigate(`/app/batch/${invoice.batch_id}`)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', color: theme.accent, fontWeight: '700', padding: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
             ← Volver al Lote
           </button>
           <div style={{ height: '20px', width: '1px', backgroundColor: theme.border }}></div>
@@ -299,7 +314,7 @@ function Triage() {
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>
           {prevInvoice && (
-            <button className="apple-btn" onClick={() => safeNavigate(`/triage/${prevInvoice.id}`)} style={{ ...buttonStyle(), border: `1px solid ${theme.border}`, background: theme.surface, color: theme.text }}>
+            <button className="apple-btn" onClick={() => safeNavigate(`/app/triage/${prevInvoice.id}`)} style={{ ...buttonStyle(), border: `1px solid ${theme.border}`, background: theme.surface, color: theme.text }}>
               Anterior
             </button>
           )}
@@ -320,12 +335,29 @@ function Triage() {
       </div>
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* PDF Viewer */}
-        <div style={{ flex: 1.2, backgroundColor: theme.bg, position: 'relative', borderRight: `1px solid ${theme.border}` }}>
-          {pdfUrl ? (
-            <iframe src={pdfUrl} width="100%" height="100%" title="Invoice" style={{ border: 'none' }} />
+        {/* Document Viewer (PDF or Image) */}
+        <div style={{ flex: 1.2, backgroundColor: 'rgba(0,0,0,0.03)', position: 'relative', borderRight: `1px solid ${theme.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto' }}>
+          {filePreview.url ? (
+            filePreview.isImage ? (
+              <div style={{ width: '100%', height: '100%', padding: '24px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <img 
+                  src={filePreview.url} 
+                  alt="Invoice" 
+                  style={{ 
+                    maxWidth: '100%', 
+                    maxHeight: '100%', 
+                    objectFit: 'contain', 
+                    borderRadius: '8px', 
+                    boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
+                    border: `1px solid ${theme.border}`
+                  }} 
+                />
+              </div>
+            ) : (
+              <iframe src={filePreview.url} width="100%" height="100%" title="Invoice" style={{ border: 'none' }} />
+            )
           ) : (
-            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: theme.textSecondary, fontWeight: '600' }}>Cargando vista previa del documento...</div>
+            <div style={{ color: theme.textSecondary, fontWeight: '600' }}>Cargando vista previa del documento...</div>
           )}
         </div>
 

@@ -1,12 +1,43 @@
 import stripe
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 from core.config import settings
-from core.security import get_current_tenant
+from core.database import get_db
+from core.security import get_current_tenant, get_current_user
 from models.tenant import Tenant
+from models.user import User
+from models.invoice import Invoice
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 router = APIRouter(prefix="/billing", tags=["Billing"])
+
+@router.get("/status")
+async def get_billing_status(
+    current_tenant: Tenant = Depends(get_current_tenant),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Devuelve el estado de facturación, cupo de prueba y datos del usuario y empresa.
+    """
+    FREE_TRIAL_LIMIT = 5
+    processed_count = db.query(Invoice).filter(Invoice.tenant_id == current_tenant.id).count()
+    trial_remaining = max(0, FREE_TRIAL_LIMIT - processed_count)
+    is_active = current_tenant.subscription_active or getattr(settings, "SKIP_BILLING_CHECK", False)
+
+    return {
+        "user_email": current_user.email,
+        "company_name": current_tenant.name,
+        "tenant_id": current_tenant.id,
+        "subscription_active": is_active,
+        "is_trial": not current_tenant.subscription_active and not getattr(settings, "SKIP_BILLING_CHECK", False),
+        "trial_limit": FREE_TRIAL_LIMIT,
+        "invoices_processed": processed_count,
+        "trial_remaining": trial_remaining,
+        "can_process": is_active or processed_count < FREE_TRIAL_LIMIT,
+        "has_stripe_customer": bool(current_tenant.stripe_customer_id)
+    }
 
 @router.post("/create-checkout-session")
 async def create_checkout_session(current_tenant: Tenant = Depends(get_current_tenant)):

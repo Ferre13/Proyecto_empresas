@@ -17,7 +17,7 @@ services:
 
   worker:
     build: ./backend
-    command: celery -A workers.celery_app worker --loglevel=info -Ofair
+    command: celery -A workers.celery_app worker --loglevel=info -Ofair -B
     volumes:
       - ./backend:/app
       - uploads_data:/tmp/ap_automation_uploads

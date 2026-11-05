@@ -47,19 +47,31 @@ async def stripe_webhook(
 
     elif event_type == 'customer.subscription.updated':
         customer_id = data_object.get('customer')
-        sub_status = data_object.get('status') # 'active', 'past_due', 'canceled', 'unpaid', etc.
+        sub_status = data_object.get('status') # 'active', 'trialing', 'past_due', 'canceled', 'unpaid'
         tenant = db.query(Tenant).filter(Tenant.stripe_customer_id == customer_id).first()
         if tenant:
-            tenant.subscription_active = (sub_status in ['active', 'trialing'])
+            # Mantener activo si está active, trialing o past_due (período de gracia)
+            tenant.subscription_active = (sub_status in ['active', 'trialing', 'past_due'])
             db.commit()
 
-    elif event_type in ['customer.subscription.deleted', 'invoice.payment_failed']:
+    elif event_type == 'customer.subscription.deleted':
         customer_id = data_object.get('customer')
         if customer_id:
             tenant = db.query(Tenant).filter(Tenant.stripe_customer_id == customer_id).first()
             if tenant:
                 tenant.subscription_active = False
                 db.commit()
+
+    elif event_type == 'invoice.payment_failed':
+        # Si se agotaron los reintentos automáticos de Stripe (next_payment_attempt es None)
+        next_attempt = data_object.get('next_payment_attempt')
+        if not next_attempt:
+            customer_id = data_object.get('customer')
+            if customer_id:
+                tenant = db.query(Tenant).filter(Tenant.stripe_customer_id == customer_id).first()
+                if tenant:
+                    tenant.subscription_active = False
+                    db.commit()
 
     elif event_type == 'invoice.paid':
         customer_id = data_object.get('customer')

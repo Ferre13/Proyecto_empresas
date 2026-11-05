@@ -27,12 +27,22 @@ function BatchDetail() {
     try {
       const res = await api.get(`/upload/batches/${batchId}/invoices`);
       setInvoices(res.data);
-    } catch (err) { console.error(err); }
+      const isStillProcessing = res.data.some(inv => inv.status === 'PENDING' || inv.status === 'PROCESSING');
+      return isStillProcessing;
+    } catch (err) { 
+      console.error(err);
+      return false;
+    }
   };
 
   useEffect(() => {
     fetchInvoices();
-    const interval = setInterval(fetchInvoices, 3000);
+    const interval = setInterval(async () => {
+      const keepPolling = await fetchInvoices();
+      if (!keepPolling) {
+        clearInterval(interval);
+      }
+    }, 3000);
     return () => clearInterval(interval);
   }, [batchId]);
 
@@ -69,7 +79,7 @@ function BatchDetail() {
 
   const getReviewUrl = () => {
     const unvalidated = invoices.find(inv => inv.status !== 'VALIDATED');
-    return unvalidated ? `/triage/${unvalidated.id}` : null;
+    return unvalidated ? `/app/triage/${unvalidated.id}` : null;
   };
 
   const cardStyle = {
@@ -128,7 +138,7 @@ function BatchDetail() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '28px' }}>
         <div>
-          <Link to="/batches" style={{ color: theme.accent, textDecoration: 'none', fontSize: '14px', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '4px', marginBottom: '8px' }}>
+          <Link to="/app/batches" style={{ color: theme.accent, textDecoration: 'none', fontSize: '14px', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '4px', marginBottom: '8px' }}>
             ← Volver a Lotes
           </Link>
           <h2 style={{ fontSize: '26px', fontWeight: '800', letterSpacing: '-0.03em', margin: 0, color: theme.text }}>
@@ -160,7 +170,7 @@ function BatchDetail() {
               key={inv.id} 
               className="apple-card" 
               style={cardStyle}
-              onClick={() => navigate(`/triage/${inv.id}`)}
+              onClick={() => navigate(`/app/triage/${inv.id}`)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: '20px' }}>📄</div>

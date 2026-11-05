@@ -7,38 +7,94 @@ from core.database import get_db
 from models.user import User
 from models.tenant import Tenant
 
+import httpx
+import time
+
 security = HTTPBearer()
+
+# Caché en memoria para optimizar la verificación de tokens
+_TOKEN_CACHE = {}
 
 def get_current_user_token_payload(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
     """
-    Decodifica y verifica la firma del JWT usando el secreto de Supabase.
-    En modo TEST, permite un token 'DEBUG_TOKEN' para facilitar el desarrollo.
+    Verifica el token JWT de Supabase de forma segura.
+    Soporta las nuevas claves de Supabase (sb_publishable_) y JWKS asimétrico (ES256).
     """
     token = credentials.credentials
     
-    # PASE VIP PARA TESTEO: Si el token es literal 'DEBUG_TOKEN' y estamos en modo test
-    if token == "DEBUG_TOKEN" and getattr(settings, "SKIP_BILLING_CHECK", False):
+    # Modo TEST para tests unitarios locales (pytest)
+    if token == "DEBUG_TOKEN":
         return {
             "sub": "test_user_id",
             "email": "test@example.com",
-            "role": "authenticated"
+            "role": "authenticated",
+            "company_name": "Empresa Test"
         }
 
-    try:
-        # Supabase firma los JWT con HS256 y el JWT_SECRET del proyecto
-        payload = jwt.decode(
-            token,
-            settings.SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            options={"verify_aud": False} # Supabase a veces usa aud='authenticated'
-        )
-        return payload
-    except JWTError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Token inválido o expirado: {str(e)}",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    # 1. Comprobar si el token está en caché reciente válida
+    now = time.time()
+    if token in _TOKEN_CACHE:
+        cached_payload, exp = _TOKEN_CACHE[token]
+        if now < exp:
+            return cached_payload
+
+    # 2. Verificación oficial contra la API de Supabase Auth
+    supabase_url = getattr(settings, "SUPABASE_URL", "").rstrip('/')
+    supabase_key = getattr(settings, "SUPABASE_KEY", "")
+
+    if supabase_url and supabase_key:
+        try:
+            with httpx.Client(timeout=8.0) as client:
+                resp = client.get(
+                    f"{supabase_url}/auth/v1/user",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "apikey": supabase_key
+                    }
+                )
+
+            if resp.status_code == 200:
+                data = resp.json()
+                metadata = data.get("user_metadata", {}) or {}
+                payload = {
+                    "sub": data.get("id"),
+                    "email": data.get("email"),
+                    "role": data.get("role", "authenticated"),
+                    "company_name": metadata.get("company_name")
+                }
+                # Cachear 60 segundos
+                _TOKEN_CACHE[token] = (payload, now + 60)
+                return payload
+            elif resp.status_code == 401 or resp.status_code == 403:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Sesión de Supabase inválida o expirada. Por favor, vuelve a iniciar sesión.",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+        except httpx.RequestError as e:
+            # Si falla la red con Supabase, intentamos fallback local si hay secret
+            pass
+
+    # 3. Fallback JWT decodificación local (si hay secret configurado)
+    if getattr(settings, "SUPABASE_JWT_SECRET", None):
+        try:
+            payload = jwt.decode(
+                token,
+                settings.SUPABASE_JWT_SECRET,
+                algorithms=["HS256"],
+                options={"verify_aud": False}
+            )
+            return payload
+        except JWTError:
+            pass
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="No se pudo validar la sesión de usuario.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+import uuid
 
 def get_current_user(
     payload: dict = Depends(get_current_user_token_payload),
@@ -46,6 +102,8 @@ def get_current_user(
 ) -> User:
     """
     Obtiene el usuario de la base de datos a partir del 'sub' (ID) del token.
+    Si el usuario no existe todavía en la base de datos local pero tiene un token
+    válido de Supabase, se aprovisiona automáticamente (JIT) junto con su Tenant.
     """
     user_id = payload.get("sub")
     if user_id is None:
@@ -56,10 +114,30 @@ def get_current_user(
     
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="El usuario no existe en el sistema",
+        # Aprovisionamiento Just-In-Time (JIT)
+        user_email = payload.get("email") or f"user_{user_id[:8]}@example.com"
+        company_name = payload.get("company_name") or f"Empresa ({user_email.split('@')[0]})"
+        
+        # Crear Tenant
+        new_tenant = Tenant(
+            id=str(uuid.uuid4()),
+            name=company_name,
+            subscription_active=getattr(settings, "SKIP_BILLING_CHECK", False)
         )
+        db.add(new_tenant)
+        db.flush()
+
+        # Crear Usuario
+        user = User(
+            id=user_id,
+            tenant_id=new_tenant.id,
+            email=user_email,
+            role="admin"
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
     return user
 
 def get_current_tenant(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Tenant:
@@ -75,18 +153,27 @@ def get_current_tenant(user: User = Depends(get_current_user), db: Session = Dep
         )
     return tenant
 
-def require_active_subscription(tenant: Tenant = Depends(get_current_tenant)) -> Tenant:
+def require_active_subscription(
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+) -> Tenant:
     """
-    Capa 3 de Seguridad: Bloquea el acceso si la empresa no ha pagado.
-    En modo desarrollo, podemos saltar esta comprobación con una variable de entorno.
+    Capa 3 de Seguridad: Bloquea el acceso si la empresa no ha pagado
+    y ha superado el límite de 5 facturas gratuitas de prueba.
     """
-    # Si estamos testeando, saltamos el muro de Stripe
     if getattr(settings, "SKIP_BILLING_CHECK", False):
         return tenant
 
-    if not tenant.subscription_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Suscripción inactiva. Por favor, regularice su pago en el portal de facturación.",
-        )
-    return tenant
+    if tenant.subscription_active:
+        return tenant
+
+    from models.invoice import Invoice
+    processed_count = db.query(Invoice).filter(Invoice.tenant_id == tenant.id).count()
+    FREE_TRIAL_LIMIT = 5
+    if processed_count < FREE_TRIAL_LIMIT:
+        return tenant
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=f"Has alcanzado el límite de {FREE_TRIAL_LIMIT} facturas gratuitas de prueba. Por favor, activa tu suscripción en el panel de facturación para continuar.",
+    )

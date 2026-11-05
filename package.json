@@ -1,0 +1,10 @@
+{
+  "name": "docuflow-ap-automation",
+  "version": "1.0.0",
+  "description": "SaaS B2B AP Automation",
+  "scripts": {
+    "start": "./run_local.sh",
+    "stop": "./stop_local.sh",
+    "test": "docker compose exec web pytest"
+  }
+}
