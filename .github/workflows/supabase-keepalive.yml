@@ -1,0 +1,19 @@
+name: Supabase Keep-Alive (Prevent Free Tier Pause)
+
+on:
+  schedule:
+    # Ejecuta cada 3 días a las 08:00 UTC para evitar la pausa de 7 días de Supabase
+    - cron: '0 8 */3 * *'
+  workflow_dispatch:
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Auth & REST Endpoints
+        run: |
+          STATUS_AUTH=$(curl -s -o /dev/null -w "%{http_code}" "https://jfflukpqcsrdhezzoeos.supabase.co/auth/v1/health" \
+            -H "apikey: sb_publishable_8YVvEpzW510EwA6nO7Wn3A_Toe4Gcjo")
+          echo "Supabase Auth Health HTTP Status: $STATUS_AUTH"
+          curl -s -o /dev/null "https://jfflukpqcsrdhezzoeos.supabase.co/rest/v1/" \
+            -H "apikey: sb_publishable_8YVvEpzW510EwA6nO7Wn3A_Toe4Gcjo" || true

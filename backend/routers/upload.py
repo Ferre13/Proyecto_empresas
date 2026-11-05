@@ -103,6 +103,7 @@ def save_and_create_invoice(file_obj, filename, batch_id, tenant_id, db: Session
 
 @router.post("/", status_code=202)
 async def upload_invoices(
+    background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -169,7 +170,11 @@ async def upload_invoices(
 
     # Lanzar tareas Celery una vez que la DB ya ha persistido los registros
     for invoice_id in created_invoices:
-        process_invoice_task.delay(invoice_id, current_tenant.id)
+        try:
+            process_invoice_task.delay(invoice_id, current_tenant.id)
+        except Exception as e:
+            print(f"Fallback a BackgroundTasks por error en broker Celery/Redis: {e}")
+            background_tasks.add_task(process_invoice_task, invoice_id, current_tenant.id)
 
     return {
         "message": "Archivos recibidos y en proceso.",

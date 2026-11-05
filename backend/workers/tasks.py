@@ -3,6 +3,8 @@ from workers.celery_app import celery_app
 from core.database import SessionLocal
 from models.invoice import Invoice
 from models.batch import Batch
+from models.mapping import ExportMapping
+from routers.mappings import DEFAULT_CANONICAL_MAPPING
 from services.ai_extractor import extract_invoice_data_with_gemini
 from services.file_router import route_file_and_extract_text
 from services.math_validator import validate_invoice_math
@@ -46,16 +48,41 @@ def process_invoice_task(self, invoice_id: str, tenant_id: str):
 
                 result = extract_invoice_data_with_gemini(file_path=invoice.temp_file_path, mime_type=mime_type)
 
-            invoice.is_valid_invoice = result.get("is_valid_invoice", False)
-            invoice.extracted_data = result
-            
-            # Validación Matemática
-            is_math_valid, math_error = validate_invoice_math(result)
-            
-            if not invoice.is_valid_invoice or not is_math_valid:
-                invoice.status = "REQUIRES_REVIEW"
+            # Si no hay retención IRPF detectada (None), normalizar a 0.0 para no dar falso nulo numérico
+            if result.get("retention_amount") is None:
+                result["retention_amount"] = 0.0
+
+            # Obtener campos requeridos por el Mapeo ERP activo del tenant
+            active_mapping = (
+                db.query(ExportMapping)
+                .filter(ExportMapping.tenant_id == tenant_id)
+                .order_by(ExportMapping.updated_at.desc())
+                .first()
+            )
+            if active_mapping and isinstance(active_mapping.mapping_config, dict) and len(active_mapping.mapping_config) > 0:
+                required_erp_fields = list(active_mapping.mapping_config.values())
             else:
+                required_erp_fields = list(DEFAULT_CANONICAL_MAPPING.values())
+
+            # Conservar si el documento en sí fue reconocido como factura por la IA
+            ai_marked_valid = bool(result.get("is_valid_invoice", False))
+            result["ai_is_valid_document"] = ai_marked_valid
+
+            # Validación Matemática + Campos requeridos por el Mapeo ERP
+            is_math_valid, math_error = validate_invoice_math(result, required_fields=required_erp_fields)
+
+            if not ai_marked_valid or not is_math_valid:
+                invoice.is_valid_invoice = False
+                result["is_valid_invoice"] = False
+                result["validation_error"] = math_error
+                invoice.status = "NEEDS_REVIEW"
+            else:
+                invoice.is_valid_invoice = True
+                result["is_valid_invoice"] = True
+                result.pop("validation_error", None)
                 invoice.status = "VALIDATED"
+
+            invoice.extracted_data = result
                 
             db.commit()
             check_batch_status(invoice.batch_id, db)
@@ -88,7 +115,7 @@ def check_batch_status(batch_id: str, db):
     
     if any(s in ["PROCESSING", "PENDING"] for s in statuses):
         batch.status = "PROCESSING"
-    elif any(s in ["REQUIRES_REVIEW", "FAILED"] for s in statuses):
+    elif any(s in ["REQUIRES_REVIEW", "NEEDS_REVIEW", "FAILED"] for s in statuses):
         batch.status = "NEEDS_REVIEW"
     elif all(s == "VALIDATED" for s in statuses):
         batch.status = "COMPLETED"

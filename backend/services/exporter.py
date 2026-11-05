@@ -2,6 +2,7 @@ import pandas as pd
 import io
 from typing import List, Dict
 from models.invoice import Invoice
+from services.math_validator import is_empty_or_placeholder
 
 def generate_erp_export(invoices: List[Invoice], mapping_config: Dict[str, str], format: str = "xlsx") -> io.BytesIO:
     """
@@ -18,7 +19,7 @@ def generate_erp_export(invoices: List[Invoice], mapping_config: Dict[str, str],
         row = {}
         for erp_column, canonical_key in mapping_config.items():
             value = inv.extracted_data.get(canonical_key, "")
-            if value is None:
+            if value is None or (isinstance(value, str) and is_empty_or_placeholder(value)):
                 value = ""
             elif isinstance(value, list):
                 # Si es lista (ej. line_items), resumir descripciones

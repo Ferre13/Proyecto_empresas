@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     # Modo de Testeo: Si es True, no pide pago de Stripe para subir facturas
     SKIP_BILLING_CHECK: bool = False
 
+    # Control de Acceso Privado (Nube):
+    # - ALLOWED_EMAILS: correos permitidos separados por comas (ej. "miemail@gmail.com"). Si está vacío, permite cualquiera.
+    # - SITE_PASSWORD: si se define, pide contraseña HTTP Basic antes de cargar la web o usar la API.
+    ALLOWED_EMAILS: str = ""
+    SITE_PASSWORD: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 settings = Settings()

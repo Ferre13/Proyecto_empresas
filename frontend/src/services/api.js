@@ -1,7 +1,14 @@
 import axios from 'axios';
 
-// Detectamos la URL de la API mediante variable de entorno o fallback dinámico
-const API_URL = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:8000`;
+// Detectamos la URL de la API mediante variable de entorno o fallback dinámico:
+// - En local con Vite dev server (puerto 5173/3000) apunta al puerto 8000.
+// - En producción unificada (Render / Hugging Face Spaces / Docker único), usa el mismo origen (window.location.origin).
+const isLocalDevServer = ['5173', '3000'].includes(window.location.port);
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  (isLocalDevServer
+    ? `${window.location.protocol}//${window.location.hostname}:8000`
+    : window.location.origin);
 
 const api = axios.create({
   baseURL: API_URL,

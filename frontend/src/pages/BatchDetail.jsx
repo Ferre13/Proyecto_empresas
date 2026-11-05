@@ -19,12 +19,71 @@ const theme = {
   bg: 'var(--bg)'
 };
 
+export const PLACEHOLDER_VALUES_SET = new Set([
+  '', '.', '..', '...', '-', '--', '—', '_', '/',
+  'null', 'none', 'n/a', 'na', 'n.a.', 'nil', 'undefined',
+  'sin datos', 'no disponible', 'desconocido', 'unknown'
+]);
+
+export function isPlaceholderOrEmpty(val) {
+  if (val === undefined || val === null) return true;
+  const s = String(val).trim().toLowerCase();
+  return PLACEHOLDER_VALUES_SET.has(s);
+}
+
+export function resolveConfigForErp(name, savedList = []) {
+  if (!name) return null;
+  const saved = savedList.find(m => m.erp_name.toLowerCase() === name.toLowerCase());
+  if (saved && saved.config && Object.keys(saved.config).length > 0) {
+    return saved.config;
+  }
+  const tpl = FALLBACK_ERP_TEMPLATES.find(
+    t => t.erp_name.toLowerCase() === name.toLowerCase() || t.id.toLowerCase() === name.toLowerCase()
+  );
+  return tpl ? tpl.config : null;
+}
+
+export function isInvoiceValidForErpConfig(inv, config) {
+  if (!inv || inv.status === 'PENDING' || inv.status === 'PROCESSING' || inv.status === 'FAILED') {
+    return false;
+  }
+  const data = inv.extracted_data;
+  if (!data || typeof data !== 'object') return false;
+  if (data.ai_is_valid_document === false) return false;
+
+  // Comprobar cuadre matemático básico
+  const subtotal = parseFloat(data.subtotal || 0);
+  const tax = parseFloat(data.tax_amount || 0);
+  const retention = parseFloat(data.retention_amount || 0);
+  const total = parseFloat(data.total_amount || 0);
+  const diffStd = Math.abs((subtotal + tax) - total);
+  const diffRet = Math.abs((subtotal + tax - retention) - total);
+  if (diffStd > 0.05 && diffRet > 0.05) {
+    return false;
+  }
+
+  // Comprobar todos los campos exigidos por el ERP activo
+  if (config && typeof config === 'object') {
+    const requiredFields = Object.values(config);
+    for (const field of requiredFields) {
+      if (field === 'is_valid_invoice' || field === 'retention_amount') continue;
+      const val = data[field];
+      if (isPlaceholderOrEmpty(val)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  return inv.is_valid_invoice !== false && inv.status === 'VALIDATED';
+}
+
 function BatchDetail() {
   const { batchId } = useParams();
   const navigate = useNavigate();
   const { t, lang } = useLanguage();
   const [invoices, setInvoices] = useState([]);
-  const [erpName, setErpName] = useState('QuickBooks Online');
+  const [erpName, setErpName] = useState(() => localStorage.getItem('docuflow_active_erp') || 'QuickBooks Online');
   const [savedMappings, setSavedMappings] = useState([]);
 
   const fetchInvoices = async () => {
@@ -45,7 +104,10 @@ function BatchDetail() {
         const res = await api.get('/mappings/');
         if (Array.isArray(res.data) && res.data.length > 0) {
           setSavedMappings(res.data);
-          setErpName(res.data[0].erp_name);
+          const storedErp = localStorage.getItem('docuflow_active_erp');
+          const active = storedErp || res.data[0].erp_name;
+          setErpName(active);
+          localStorage.setItem('docuflow_active_erp', active);
         }
       } catch (e) {}
     };
@@ -62,6 +124,22 @@ function BatchDetail() {
     }, 3000);
     return () => clearInterval(interval);
   }, [batchId]);
+
+  const handleErpChange = async (newErp) => {
+    setErpName(newErp);
+    localStorage.setItem('docuflow_active_erp', newErp);
+    try {
+      const res = await api.post('/mappings/activate', {
+        erp_name: newErp,
+        batch_id: batchId
+      });
+      if (Array.isArray(res.data?.invoices)) {
+        setInvoices(res.data.invoices);
+      }
+    } catch (err) {
+      console.error("Error activating ERP mapping:", err);
+    }
+  };
 
   const handleDownload = async (format = 'xlsx') => {
     try {
@@ -101,8 +179,26 @@ function BatchDetail() {
     }
   };
 
+  const activeConfig = resolveConfigForErp(erpName, savedMappings);
+
+  const getBadgeInfo = (inv) => {
+    if (inv.status === 'PENDING' || inv.status === 'PROCESSING') {
+      return { label: t.batchDetail.statusProcessing, color: theme.accent, isValid: false };
+    }
+    if (inv.status === 'FAILED') {
+      return { label: t.batchDetail.statusFailed, color: theme.error, isValid: false };
+    }
+    const validForSelectedErp = isInvoiceValidForErpConfig(inv, activeConfig);
+    if (validForSelectedErp) {
+      return { label: t.batchDetail.statusValidated, color: theme.success, isValid: true };
+    }
+    return { label: t.batchDetail.statusNeedsReview, color: theme.warning, isValid: false };
+  };
+
   const getReviewUrl = () => {
-    const unvalidated = invoices.find(inv => inv.status !== 'VALIDATED');
+    const unvalidated = invoices.find(
+      inv => inv.status !== 'PENDING' && inv.status !== 'PROCESSING' && !getBadgeInfo(inv).isValid
+    );
     return unvalidated ? `/app/triage/${unvalidated.id}` : null;
   };
 
@@ -137,19 +233,6 @@ function BatchDetail() {
     pointerEvents: disabled ? 'none' : 'auto'
   });
 
-  const getBadgeInfo = (inv) => {
-    if (inv.is_valid_invoice === false) {
-      return { label: t.batchDetail.statusNeedsReview, color: theme.warning };
-    }
-    switch (inv.status) {
-      case 'VALIDATED': return { label: t.batchDetail.statusValidated, color: theme.success };
-      case 'NEEDS_REVIEW': return { label: t.batchDetail.statusNeedsReview, color: theme.warning };
-      case 'FAILED': return { label: t.batchDetail.statusFailed, color: theme.error };
-      default: return { label: t.batchDetail.statusProcessing, color: theme.accent };
-    }
-  };
-
-  // Combinar mapeos guardados del usuario + plantillas oficiales sin duplicar
   const erpOptions = [
     ...savedMappings.map(m => ({ label: `☁️ ${m.erp_name}`, value: m.erp_name })),
     ...FALLBACK_ERP_TEMPLATES
@@ -194,7 +277,7 @@ function BatchDetail() {
             </span>
             <select
               value={erpName}
-              onChange={(e) => setErpName(e.target.value)}
+              onChange={(e) => handleErpChange(e.target.value)}
               style={{
                 border: 'none',
                 background: 'transparent',
@@ -265,7 +348,7 @@ function BatchDetail() {
                   {badge.label}
                 </div>
 
-                {(inv.status === 'FAILED' || inv.status === 'PROCESSING') && (
+                {inv.status === 'FAILED' && (
                   <button onClick={(e) => handleRetry(e, inv.id)} style={{ background: 'none', border: 'none', color: theme.textSecondary, cursor: 'pointer', fontSize: '12px', fontWeight: '600', padding: '4px 8px' }}>
                     {t.batchDetail.retry}
                   </button>

@@ -243,11 +243,26 @@ function Mapping() {
         }
 
         setSavedMappings(mappingsList);
-        if (mappingsList.length > 0) {
+        const storedActive = localStorage.getItem('docuflow_active_erp');
+        if (storedActive) {
+          const foundSaved = mappingsList.find(m => m.erp_name.toLowerCase() === storedActive.toLowerCase());
+          const foundTpl = FALLBACK_ERP_TEMPLATES.find(tpl => tpl.erp_name.toLowerCase() === storedActive.toLowerCase());
+          if (foundSaved) {
+            applyConfigToEditor(foundSaved.erp_name, foundSaved.config);
+          } else if (foundTpl) {
+            applyConfigToEditor(foundTpl.erp_name, foundTpl.config);
+          } else if (mappingsList.length > 0) {
+            applyConfigToEditor(mappingsList[0].erp_name, mappingsList[0].config);
+          } else {
+            applyConfigToEditor(FALLBACK_ERP_TEMPLATES[0].erp_name, FALLBACK_ERP_TEMPLATES[0].config);
+          }
+        } else if (mappingsList.length > 0) {
           const first = mappingsList[0];
+          localStorage.setItem('docuflow_active_erp', first.erp_name);
           applyConfigToEditor(first.erp_name, first.config);
         } else {
           // Por defecto cargar QuickBooks Online en el editor
+          localStorage.setItem('docuflow_active_erp', FALLBACK_ERP_TEMPLATES[0].erp_name);
           applyConfigToEditor(FALLBACK_ERP_TEMPLATES[0].erp_name, FALLBACK_ERP_TEMPLATES[0].config);
         }
       } catch (err) {
@@ -257,14 +272,18 @@ function Mapping() {
     fetchInitialData();
   }, []);
 
-  const handleSelectPreset = (preset) => {
+  const handleSelectPreset = async (preset) => {
+    localStorage.setItem('docuflow_active_erp', preset.erp_name);
     applyConfigToEditor(preset.erp_name, preset.config);
     setStatus(`⚡ ${t.mapping.loadPresetMsg} ${preset.erp_name} (${preset.region}). ${t.mapping.clickSaveToPersist}`);
+    await api.post('/mappings/activate', { erp_name: preset.erp_name }).catch(() => {});
   };
 
-  const handleSelectSaved = (saved) => {
+  const handleSelectSaved = async (saved) => {
+    localStorage.setItem('docuflow_active_erp', saved.erp_name);
     applyConfigToEditor(saved.erp_name, saved.config);
     setStatus(`☁️ ${t.mapping.loadPresetMsg} ${saved.erp_name}`);
+    await api.post('/mappings/activate', { erp_name: saved.erp_name }).catch(() => {});
   };
 
   const handleDeleteSaved = async (e, nameToDelete) => {
@@ -343,6 +362,7 @@ function Mapping() {
       }
 
       const cleanName = (erpName || 'Custom ERP').trim();
+      localStorage.setItem('docuflow_active_erp', cleanName);
       const res = await api.post('/mappings/', { erp_name: cleanName, config });
 
       const updatedList = res.data?.mappings || [

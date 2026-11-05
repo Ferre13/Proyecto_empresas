@@ -92,3 +92,22 @@ def test_free_trial_and_paywall(test_db, monkeypatch):
     res_paid = require_active_subscription(tenant=tenant, db=test_db)
     assert res_paid.id == tenant.id
 
+
+def test_allowed_emails_whitelist(test_db, monkeypatch):
+    from core.config import settings
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(settings, "ALLOWED_EMAILS", "owner@miempresa.com, socio@miempresa.com")
+
+    # 1. Unauthorized email is rejected with 403
+    bad_payload = {"sub": "intruder_1", "email": "hacker@externo.com", "role": "authenticated"}
+    with pytest.raises(HTTPException) as exc_info:
+        get_current_user(payload=bad_payload, db=test_db)
+    assert exc_info.value.status_code == 403
+
+    # 2. Authorized owner email is allowed
+    good_payload = {"sub": "owner_1", "email": "owner@miempresa.com", "role": "authenticated"}
+    owner_user = get_current_user(payload=good_payload, db=test_db)
+    assert owner_user.email == "owner@miempresa.com"
+
+

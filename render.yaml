@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: docuflow-private
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: SKIP_BILLING_CHECK
+        value: "True"
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ALLOWED_EMAILS
+        sync: false
+      - key: SITE_PASSWORD
+        sync: false
+      - key: SUPABASE_URL
+        value: https://jfflukpqcsrdhezzoeos.supabase.co
+      - key: SUPABASE_KEY
+        sync: false

@@ -6,7 +6,7 @@ SQLAlchemy==2.0.28
 psycopg2-binary==2.9.9
 alembic==1.13.1
 celery==5.3.6
-redis==5.0.3
+redis>=6.1.0
 python-multipart==0.0.9
 python-jose[cryptography]==3.3.0
 stripe==8.6.0

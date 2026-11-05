@@ -1,13 +1,47 @@
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional, List
 from schemas.invoice import CanonicalInvoiceSchema
 
-def validate_invoice_math(data: Dict[str, Any]) -> Tuple[bool, str]:
+
+PLACEHOLDER_VALUES = {
+    "", ".", "..", "...", "-", "--", "—", "_", "/",
+    "null", "none", "n/a", "na", "n.a.", "nil", "undefined",
+    "sin datos", "no disponible", "desconocido", "unknown"
+}
+
+
+def is_empty_or_placeholder(val: Any) -> bool:
+    if val is None:
+        return True
+    s = str(val).strip().lower()
+    return s in PLACEHOLDER_VALUES
+
+
+def sanitize_invoice_fields(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Limpia placeholders ('.', 'null', 'N/A', '-') in-place convirtiéndolos en None."""
+    if not isinstance(data, dict):
+        return data
+    for k, v in list(data.items()):
+        if isinstance(v, str) and is_empty_or_placeholder(v):
+            data[k] = None
+    return data
+
+
+def validate_invoice_math(
+    data: Dict[str, Any],
+    required_fields: Optional[List[str]] = None
+) -> Tuple[bool, str]:
     """
-    Verifica la integridad matemática de los datos extraídos por la IA.
+    Verifica la integridad matemática de los datos extraídos por la IA
+    y comprueba que todos los campos exigidos por el Mapeo ERP activo estén presentes.
     Retorna: (is_valid, error_message)
     """
-    # 1. Si la IA ya marcó que no es una factura, no validamos matemáticas
-    if not data.get("is_valid_invoice"):
+    sanitize_invoice_fields(data)
+
+    # 1. Si la IA determinó originalmente que el documento NO es una factura
+    ai_doc_valid = data.get("ai_is_valid_document")
+    if ai_doc_valid is False:
+        return False, "Documento marcado como inválido por la IA."
+    if ai_doc_valid is None and not data.get("is_valid_invoice") and "validation_error" not in data:
         return False, "Documento marcado como inválido por la IA."
 
     subtotal = float(data.get("subtotal") or 0.0)
@@ -36,11 +70,14 @@ def validate_invoice_math(data: Dict[str, Any]) -> Tuple[bool, str]:
     if not is_sum_valid:
         return False, f"Error matemático: Subtotal({subtotal}) + Impuestos({tax_amount}) != Total({total_amount})"
 
-    # 3. Validación de campos críticos obligatorios
-    critical_fields = ["supplier_name", "invoice_number", "issue_date"]
+    # 3. Validación de campos críticos obligatorios según el Mapeo ERP activo
+    critical_fields = required_fields if required_fields is not None else ["supplier_name", "invoice_number", "issue_date"]
     for field in critical_fields:
-        if not data.get(field):
-            return False, f"Campo crítico ausente: {field}"
+        if field in ("is_valid_invoice", "retention_amount"):
+            continue
+        val = data.get(field)
+        if is_empty_or_placeholder(val):
+            return False, f"Campo crítico ausente para el ERP seleccionado: {field}"
 
     # 4. Validación de líneas de detalle (blindada contra None)
     line_items = data.get("line_items", [])

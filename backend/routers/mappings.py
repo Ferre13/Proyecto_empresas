@@ -15,6 +15,8 @@ from models.tenant import Tenant
 from models.mapping import ExportMapping
 from models.invoice import Invoice
 from services.exporter import generate_erp_export
+from services.math_validator import validate_invoice_math
+from routers.invoices import sync_batch_status
 
 router = APIRouter(prefix="/mappings", tags=["Mappings"])
 
@@ -175,6 +177,55 @@ async def get_erp_templates():
     return PRECONFIGURED_ERP_TEMPLATES
 
 
+def reevaluate_tenant_invoices(db: Session, tenant_id: str, mapping_config: dict):
+    """
+    Re-evalúa en tiempo real todas las facturas procesadas del tenant contra
+    los campos requeridos por el Mapeo ERP seleccionado y sincroniza el estado
+    de cada factura y cada lote.
+    """
+    if not isinstance(mapping_config, dict) or len(mapping_config) == 0:
+        required_fields = list(DEFAULT_CANONICAL_MAPPING.values())
+    else:
+        required_fields = list(mapping_config.values())
+
+    invoices = (
+        db.query(Invoice)
+        .filter(
+            Invoice.tenant_id == tenant_id,
+            Invoice.extracted_data.isnot(None),
+        )
+        .all()
+    )
+
+    affected_batches = set()
+    for inv in invoices:
+        if inv.status in ("PENDING", "PROCESSING", "FAILED"):
+            continue
+        data = dict(inv.extracted_data or {})
+        if data.get("retention_amount") is None:
+            data["retention_amount"] = 0.0
+
+        ok, err = validate_invoice_math(data, required_fields=required_fields)
+        if ok:
+            inv.is_valid_invoice = True
+            data["is_valid_invoice"] = True
+            data.pop("validation_error", None)
+            inv.status = "VALIDATED"
+        else:
+            inv.is_valid_invoice = False
+            data["is_valid_invoice"] = False
+            data["validation_error"] = err
+            inv.status = "NEEDS_REVIEW"
+
+        inv.extracted_data = data
+        if inv.batch_id:
+            affected_batches.add(inv.batch_id)
+
+    db.commit()
+    for b_id in affected_batches:
+        sync_batch_status(b_id, db)
+
+
 @router.post("/detect-headers")
 async def detect_headers(file: UploadFile = File(...)):
     """
@@ -293,6 +344,9 @@ async def save_mapping(
     mapping.updated_at = func.now()
     db.commit()
 
+    # Re-evaluar facturas existentes según el nuevo mapeo activo
+    reevaluate_tenant_invoices(db, current_tenant.id, config)
+
     # Sincronizar con Supabase Cloud (user_metadata)
     all_mappings = (
         db.query(ExportMapping)
@@ -312,6 +366,89 @@ async def save_mapping(
         "message": "Configuración de mapeo guardada exitosamente.",
         "erp_name": erp_name,
         "mappings": serialized,
+    }
+
+
+@router.post("/activate")
+async def activate_mapping(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    token_payload: dict = Depends(get_current_user_token_payload),
+):
+    """
+    Cambia el ERP activo (desde un lote o desde ajustes), actualiza su prioridad,
+    re-evalúa al instante todas las facturas contra los campos requeridos por ese ERP
+    y devuelve las facturas actualizadas del lote si se proporciona batch_id.
+    """
+    erp_name = (payload.get("erp_name") or "").strip()
+    batch_id = payload.get("batch_id")
+    if not erp_name:
+        raise HTTPException(status_code=400, detail="erp_name es obligatorio.")
+
+    mapping = (
+        db.query(ExportMapping)
+        .filter(
+            ExportMapping.tenant_id == current_tenant.id,
+            ExportMapping.erp_name == erp_name,
+        )
+        .first()
+    )
+
+    if not mapping:
+        preset = next(
+            (
+                t
+                for t in PRECONFIGURED_ERP_TEMPLATES
+                if t["erp_name"].lower() == erp_name.lower() or t["id"].lower() == erp_name.lower()
+            ),
+            None,
+        )
+        config = preset["config"] if preset else DEFAULT_CANONICAL_MAPPING
+        mapping = ExportMapping(
+            tenant_id=current_tenant.id,
+            erp_name=preset["erp_name"] if preset else erp_name,
+            mapping_config=config,
+        )
+        db.add(mapping)
+    else:
+        mapping.updated_at = func.now()
+
+    db.commit()
+
+    # Re-evaluar todas las facturas del tenant frente al nuevo ERP activo
+    reevaluate_tenant_invoices(db, current_tenant.id, mapping.mapping_config)
+
+    # Sincronizar ERP activo en Supabase
+    all_mappings = (
+        db.query(ExportMapping)
+        .filter(ExportMapping.tenant_id == current_tenant.id)
+        .order_by(ExportMapping.updated_at.desc())
+        .all()
+    )
+    serialized = [{"erp_name": m.erp_name, "config": m.mapping_config} for m in all_mappings]
+    raw_token = token_payload.get("raw_token")
+    if raw_token:
+        sync_user_metadata_to_supabase(
+            raw_token,
+            {"erp_mappings": serialized, "active_erp": mapping.erp_name},
+        )
+
+    batch_invoices = []
+    if batch_id:
+        batch_invoices = (
+            db.query(Invoice)
+            .filter(
+                Invoice.batch_id == batch_id,
+                Invoice.tenant_id == current_tenant.id,
+            )
+            .all()
+        )
+
+    return {
+        "erp_name": mapping.erp_name,
+        "config": mapping.mapping_config,
+        "invoices": batch_invoices,
     }
 
 

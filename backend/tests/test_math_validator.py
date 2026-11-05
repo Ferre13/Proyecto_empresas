@@ -92,3 +92,55 @@ def test_math_validator_missing_critical_field():
     is_valid, msg = validate_invoice_math(data)
     assert is_valid is False
     assert "invoice_number" in msg
+
+def test_math_validator_dynamic_erp_required_fields():
+    # Invoice missing due_date, which is required in Oracle NetSuite but not in a 1-field custom ERP
+    data = {
+        "ai_is_valid_document": True,
+        "is_valid_invoice": False, # Previously failed in another ERP
+        "supplier_name": "Acme S.L.",
+        "invoice_number": "INV-2026-009",
+        "issue_date": "2026-03-01",
+        "due_date": None,
+        "subtotal": 100.0,
+        "tax_amount": 21.0,
+        "total_amount": 121.0
+    }
+    # 1. With 1-field custom mapping requiring only invoice_number -> Valid!
+    is_valid_custom, msg_custom = validate_invoice_math(data, required_fields=["invoice_number"])
+    assert is_valid_custom is True
+    assert "exitosa" in msg_custom
+
+    # 2. Switching to Oracle NetSuite (requires due_date) -> Needs review!
+    is_valid_oracle, msg_oracle = validate_invoice_math(
+        data,
+        required_fields=["invoice_number", "issue_date", "due_date", "supplier_name", "total_amount"]
+    )
+    assert is_valid_oracle is False
+    assert "due_date" in msg_oracle
+
+
+def test_math_validator_rejects_dot_placeholder():
+    # Gemini sometimes outputs "." or "N/A" when a field is missing
+    data = {
+        "ai_is_valid_document": True,
+        "is_valid_invoice": True,
+        "supplier_name": "Glovoapp Spain Platform S.L.",
+        "invoice_number": "ES2026-B672828710013758256",
+        "issue_date": "2026-03-13",
+        "due_date": ".",
+        "customer_name": ".",
+        "subtotal": 3.29,
+        "tax_amount": 0.69,
+        "total_amount": 3.98
+    }
+    is_valid, msg = validate_invoice_math(
+        data,
+        required_fields=["invoice_number", "due_date", "total_amount"]
+    )
+    assert is_valid is False
+    assert "due_date" in msg
+    assert data["due_date"] is None
+    assert data["customer_name"] is None
+
+

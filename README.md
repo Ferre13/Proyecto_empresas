@@ -1,3 +1,13 @@
+---
+title: DocuFlow AP Automation
+emoji: 🧾
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # DocuFlow - SaaS B2B AP Automation System
 
 > Plataforma SaaS B2B de grado empresarial para la automatización de Cuentas por Pagar (AP). Extrae datos estructurados de facturas mediante **Gemini 2.5 Flash**, valida la integridad matemática de importes, habilita la corrección humana asistida (Triaje) y exporta datos al formato contable de cualquier ERP (SAP, Holded, Sage, Excel/CSV).

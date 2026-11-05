@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 import os
@@ -85,7 +85,7 @@ def sync_batch_status(batch_id: str, db: Session):
 
     if any(s in ["PROCESSING", "PENDING"] for s in statuses):
         batch.status = "PROCESSING"
-    elif any(s in ["REQUIRES_REVIEW", "FAILED"] for s in statuses):
+    elif any(s in ["REQUIRES_REVIEW", "NEEDS_REVIEW", "FAILED"] for s in statuses):
         batch.status = "NEEDS_REVIEW"
     elif all(s == "VALIDATED" for s in statuses):
         batch.status = "COMPLETED"
@@ -134,6 +134,7 @@ async def update_invoice_data(
 @router.post("/{invoice_id}/retry")
 async def retry_invoice_processing(
     invoice_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_tenant: Tenant = Depends(get_current_tenant)
 ):
@@ -158,6 +159,10 @@ async def retry_invoice_processing(
     sync_batch_status(invoice.batch_id, db)
 
     # Lanzar la tarea de nuevo
-    process_invoice_task.delay(invoice.id, current_tenant.id)
-    
+    try:
+        process_invoice_task.delay(invoice.id, current_tenant.id)
+    except Exception as e:
+        print(f"Fallback a BackgroundTasks en retry: {e}")
+        background_tasks.add_task(process_invoice_task, invoice.id, current_tenant.id)
+
     return {"message": "Re-procesamiento iniciado."}

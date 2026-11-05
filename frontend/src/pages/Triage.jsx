@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
+import { FALLBACK_ERP_TEMPLATES } from './Mapping';
+import { resolveConfigForErp, isPlaceholderOrEmpty } from './BatchDetail';
 
 const theme = {
   surface: 'var(--surface)',
@@ -47,9 +49,25 @@ function Triage() {
   const [batchInvoices, setBatchInvoices] = useState([]);
   const [isDirty, setIsDirty] = useState(false);
 
+  const [savedMappings, setSavedMappings] = useState([]);
+  const [activeErpName, setActiveErpName] = useState(() => localStorage.getItem('docuflow_active_erp') || 'QuickBooks Online');
   const [activeFieldKeys, setActiveFieldKeys] = useState(ALL_EDITABLE_FIELDS);
   const [inactiveFieldKeys, setInactiveFieldKeys] = useState([]);
   const [showSecondaryFields, setShowSecondaryFields] = useState(false);
+  const [manualValidOverride, setManualValidOverride] = useState(false);
+
+  const applyErpConfigFields = (config) => {
+    if (config && typeof config === 'object' && Object.keys(config).length > 0) {
+      const mappedCanonicalIds = Object.values(config);
+      const activeList = ['is_valid_invoice', ...mappedCanonicalIds.filter(id => id !== 'is_valid_invoice')];
+      const inactiveList = ALL_EDITABLE_FIELDS.filter(id => id !== 'is_valid_invoice' && !mappedCanonicalIds.includes(id));
+      setActiveFieldKeys(activeList);
+      setInactiveFieldKeys(inactiveList);
+    } else {
+      setActiveFieldKeys(ALL_EDITABLE_FIELDS);
+      setInactiveFieldKeys([]);
+    }
+  };
 
   useEffect(() => {
     let createdUrl = null;
@@ -62,10 +80,15 @@ function Triage() {
         const rawData = res.data.extracted_data || {};
         const cleanedData = {};
         Object.keys(rawData).forEach(k => {
-          cleanedData[k] = (rawData[k] === null || rawData[k] === 'null') ? '' : rawData[k];
+          if (typeof rawData[k] === 'boolean' || typeof rawData[k] === 'number' || Array.isArray(rawData[k])) {
+            cleanedData[k] = rawData[k];
+          } else {
+            cleanedData[k] = isPlaceholderOrEmpty(rawData[k]) ? '' : rawData[k];
+          }
         });
         setFormData(cleanedData);
         setIsDirty(false);
+        setManualValidOverride(false);
 
         const batchRes = await api.get(`/upload/batches/${res.data.batch_id}/invoices`);
         setBatchInvoices(batchRes.data);
@@ -86,22 +109,18 @@ function Triage() {
     const fetchMappingConfig = async () => {
       try {
         const res = await api.get('/mappings/');
-        if (res.data && res.data.length > 0 && res.data[0].config) {
-          const config = res.data[0].config;
-          const mappedCanonicalIds = Object.values(config);
+        const list = Array.isArray(res.data) ? res.data : [];
+        setSavedMappings(list);
 
-          const activeList = ['is_valid_invoice', ...mappedCanonicalIds.filter(id => id !== 'is_valid_invoice')];
-          const inactiveList = ALL_EDITABLE_FIELDS.filter(id => id !== 'is_valid_invoice' && !mappedCanonicalIds.includes(id));
+        const storedErp = localStorage.getItem('docuflow_active_erp');
+        const selectedErp = storedErp || (list.length > 0 ? list[0].erp_name : 'QuickBooks Online');
+        setActiveErpName(selectedErp);
 
-          setActiveFieldKeys(activeList);
-          setInactiveFieldKeys(inactiveList);
-        } else {
-          setActiveFieldKeys(ALL_EDITABLE_FIELDS);
-          setInactiveFieldKeys([]);
-        }
+        const resolvedConfig = resolveConfigForErp(selectedErp, list) || (list[0]?.config);
+        applyErpConfigFields(resolvedConfig);
       } catch (e) {
-        setActiveFieldKeys(ALL_EDITABLE_FIELDS);
-        setInactiveFieldKeys([]);
+        const fallbackConfig = resolveConfigForErp(activeErpName, []);
+        applyErpConfigFields(fallbackConfig);
       }
     };
 
@@ -115,6 +134,20 @@ function Triage() {
     };
   }, [invoiceId]);
 
+  const handleSwitchErpInTriage = async (newErp) => {
+    setActiveErpName(newErp);
+    localStorage.setItem('docuflow_active_erp', newErp);
+    setManualValidOverride(false);
+    const resolvedConfig = resolveConfigForErp(newErp, savedMappings);
+    applyErpConfigFields(resolvedConfig);
+    try {
+      await api.post('/mappings/activate', {
+        erp_name: newErp,
+        batch_id: invoice?.batch_id
+      });
+    } catch (e) {}
+  };
+
   const currentIndex = batchInvoices.findIndex(inv => inv.id === invoiceId);
   const prevInvoice = currentIndex > 0 ? batchInvoices[currentIndex - 1] : null;
   const nextInvoice = currentIndex < batchInvoices.length - 1 ? batchInvoices[currentIndex + 1] : null;
@@ -124,9 +157,24 @@ function Triage() {
     setIsDirty(true);
   };
 
+  const missingActiveFields = activeFieldKeys.filter(
+    k => k !== 'is_valid_invoice' && k !== 'retention_amount' && isPlaceholderOrEmpty(formData[k])
+  );
+  const isEffectiveValid = manualValidOverride
+    ? Boolean(formData.is_valid_invoice)
+    : (formData.ai_is_valid_document !== false && missingActiveFields.length === 0);
+
   const handleSave = async (andNavigate = false) => {
     try {
-      await api.put(`/invoices/${invoiceId}`, { extracted_data: formData });
+      const updatedData = {
+        ...formData,
+        is_valid_invoice: isEffectiveValid
+      };
+      const updatedStatus = isEffectiveValid ? 'VALIDATED' : 'NEEDS_REVIEW';
+      await api.put(`/invoices/${invoiceId}`, {
+        extracted_data: updatedData,
+        status: updatedStatus
+      });
       setIsDirty(false);
       if (andNavigate) {
         if (nextInvoice) {
@@ -190,10 +238,10 @@ function Triage() {
   const renderSingleField = (key, isSecondary = false) => {
     const label = t.triage.fields?.[key] || key;
     const val = formData[key];
-    const isMissing = (val === undefined || val === '' || val === null || val === 'null');
+    const isMissing = isPlaceholderOrEmpty(val);
 
     if (key === 'is_valid_invoice') {
-      const isValid = formData[key] !== false;
+      const isValid = isEffectiveValid;
       return (
         <div key={key} style={{
           padding: '16px 20px',
@@ -214,7 +262,10 @@ function Triage() {
             <input
               type="checkbox"
               checked={isValid}
-              onChange={(e) => handleFieldChange(key, e.target.checked)}
+              onChange={(e) => {
+                setManualValidOverride(true);
+                handleFieldChange(key, e.target.checked);
+              }}
               style={{ width: '18px', height: '18px', accentColor: theme.success }}
             />
             {t.triage.validCheckbox}
@@ -229,7 +280,7 @@ function Triage() {
           <label style={{ fontWeight: '700', fontSize: '11px', color: theme.textSecondary, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             {label}
           </label>
-          {isMissing && !isSecondary && (
+          {isMissing && !isSecondary && key !== 'retention_amount' && (
             <span style={{ fontSize: '11px', fontWeight: '600', color: theme.warning }}>
               {t.triage.missingBadge}
             </span>
@@ -249,7 +300,7 @@ function Triage() {
             onChange={(e) => handleFieldChange(key, e.target.value)}
             style={{
               ...inputStyle,
-              borderColor: (isMissing && !isSecondary) ? theme.warning : theme.border
+              borderColor: (isMissing && !isSecondary && key !== 'retention_amount') ? theme.warning : theme.border
             }}
             placeholder={`${t.triage.enterPlaceholder} ${label.toLowerCase()}...`}
           />
@@ -257,6 +308,13 @@ function Triage() {
       </div>
     );
   };
+
+  const erpOptions = [
+    ...savedMappings.map(m => ({ label: `☁️ ${m.erp_name}`, value: m.erp_name })),
+    ...FALLBACK_ERP_TEMPLATES
+      .filter(tpl => !savedMappings.some(s => s.erp_name.toLowerCase() === tpl.erp_name.toLowerCase()))
+      .map(tpl => ({ label: `${tpl.badge} ${tpl.erp_name}`, value: tpl.erp_name }))
+  ];
 
   return (
     <div style={{
@@ -286,9 +344,11 @@ function Triage() {
         alignItems: 'center',
         backgroundColor: theme.surface,
         borderBottom: `1px solid ${theme.border}`,
-        zIndex: 10
+        zIndex: 10,
+        flexWrap: 'wrap',
+        gap: '12px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
           <button className="apple-btn" onClick={() => safeNavigate(`/app/batch/${invoice.batch_id}`)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', color: theme.accent, fontWeight: '700', padding: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
             {t.triage.backToBatch}
           </button>
@@ -296,6 +356,27 @@ function Triage() {
           <span style={{ fontSize: '14px', fontWeight: '600', color: theme.textSecondary }}>
             {t.triage.docCounter} <span style={{ color: theme.text }}>{currentIndex + 1}</span> {t.triage.of} <span style={{ color: theme.text }}>{batchInvoices.length}</span>
           </span>
+          <div style={{ height: '20px', width: '1px', backgroundColor: theme.border }}></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: 'var(--bg)', padding: '4px 10px', borderRadius: '10px', border: `1px solid ${theme.border}` }}>
+            <span style={{ fontSize: '11px', fontWeight: '700', color: theme.textSecondary }}>ERP:</span>
+            <select
+              value={activeErpName}
+              onChange={(e) => handleSwitchErpInTriage(e.target.value)}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: theme.text,
+                fontWeight: '700',
+                fontSize: '12px',
+                cursor: 'pointer',
+                outline: 'none'
+              }}
+            >
+              {erpOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>
           {prevInvoice && (
