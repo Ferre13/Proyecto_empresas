@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import api from '../services/api';
 
 function Settings() {
   const { user, billingStatus, refreshBilling, logout } = useAuth();
+  const { t } = useLanguage();
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
 
@@ -14,11 +16,11 @@ function Settings() {
   const handleSubscribe = async () => {
     try {
       setLoading(true);
-      setStatusMsg('Conectando con Stripe Checkout seguro...');
+      setStatusMsg(t.settings.connectingStripe);
       const response = await api.post('/billing/create-checkout-session');
       window.location.href = response.data.url;
     } catch (err) {
-      setStatusMsg('Error al conectar con la pasarela de pagos Stripe.');
+      setStatusMsg(t.upload.stripeError);
       setLoading(false);
     }
   };
@@ -26,14 +28,14 @@ function Settings() {
   const handleManageBilling = async () => {
     try {
       setLoading(true);
-      setStatusMsg('Abriendo el Portal de Clientes de Stripe...');
+      setStatusMsg(t.settings.openingPortal);
       const response = await api.post('/billing/create-portal-session');
       window.location.href = response.data.url;
     } catch (err) {
       if (err.response && err.response.status === 400) {
         handleSubscribe();
       } else {
-        setStatusMsg('No se pudo abrir el portal de clientes de Stripe.');
+        setStatusMsg(t.upload.stripeError);
         setLoading(false);
       }
     }
@@ -51,35 +53,34 @@ function Settings() {
   return (
     <div style={{ maxWidth: '720px', margin: '0 auto', animation: 'fadeIn 0.4s ease-out' }}>
       <h2 style={{ fontSize: '28px', fontWeight: '800', letterSpacing: '-0.03em', margin: '0 0 8px 0' }}>
-        Ajustes y Perfil
+        {t.settings.title}
       </h2>
       <p style={{ color: 'var(--text-sec)', fontSize: '15px', margin: '0 0 28px 0' }}>
-        Gestiona la información de tu empresa, tu suscripción y la seguridad de tu cuenta.
+        {t.settings.subtitle}
       </p>
 
-      {/* Tarjeta 1: Información de Empresa y Usuario */}
       <div style={cardStyle}>
         <h3 style={{ fontSize: '18px', fontWeight: '700', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          🏢 Datos de la Empresa
+          {t.settings.companyCardTitle}
         </h3>
-        
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
           <div>
-            <div style={{ fontSize: '12px', color: 'var(--text-sec)', marginBottom: '4px' }}>Razón Social</div>
+            <div style={{ fontSize: '12px', color: 'var(--text-sec)', marginBottom: '4px' }}>{t.settings.companyNameLabel}</div>
             <div style={{ fontSize: '15px', fontWeight: '600' }}>
               {billingStatus?.company_name || user?.company_name || 'Mi Empresa'}
             </div>
           </div>
 
           <div>
-            <div style={{ fontSize: '12px', color: 'var(--text-sec)', marginBottom: '4px' }}>Usuario Administrador</div>
+            <div style={{ fontSize: '12px', color: 'var(--text-sec)', marginBottom: '4px' }}>{t.settings.adminUserLabel}</div>
             <div style={{ fontSize: '15px', fontWeight: '600' }}>
               {billingStatus?.user_email || user?.email || 'N/A'}
             </div>
           </div>
 
           <div>
-            <div style={{ fontSize: '12px', color: 'var(--text-sec)', marginBottom: '4px' }}>Tenant ID (Aislamiento de Datos)</div>
+            <div style={{ fontSize: '12px', color: 'var(--text-sec)', marginBottom: '4px' }}>{t.settings.tenantIdLabel}</div>
             <div style={{ fontSize: '12px', fontFamily: 'monospace', color: 'var(--text-sec)', backgroundColor: 'var(--bg)', padding: '4px 8px', borderRadius: '6px', display: 'inline-block' }}>
               {billingStatus?.tenant_id || user?.id || 'demo-tenant'}
             </div>
@@ -87,11 +88,10 @@ function Settings() {
         </div>
       </div>
 
-      {/* Tarjeta 2: Facturación y Suscripción */}
       <div style={cardStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
           <h3 style={{ fontSize: '18px', fontWeight: '700', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            💳 Plan y Facturación
+            {t.settings.billingCardTitle}
           </h3>
 
           {billingStatus && (
@@ -104,7 +104,7 @@ function Settings() {
               color: billingStatus.subscription_active ? 'var(--success)' : 'var(--warning)',
               border: `1px solid ${billingStatus.subscription_active ? 'rgba(52, 199, 89, 0.25)' : 'rgba(255, 149, 0, 0.25)'}`
             }}>
-              {billingStatus.subscription_active ? '● Suscripción Activa (Plan Pro)' : '● Periodo de Prueba Gratuita'}
+              {billingStatus.subscription_active ? t.settings.statusActivePro : t.settings.statusTrial}
             </span>
           )}
         </div>
@@ -118,11 +118,10 @@ function Settings() {
             border: '1px solid var(--border)'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px', fontWeight: '600' }}>
-              <span>Cupo de Prueba Gratuita</span>
-              <span>{billingStatus.invoices_processed} de {billingStatus.trial_limit} facturas usadas</span>
+              <span>{t.settings.trialQuotaLabel}</span>
+              <span>{billingStatus.invoices_processed} / {billingStatus.trial_limit} {t.settings.invoicesUsed}</span>
             </div>
-            
-            {/* Barra de progreso */}
+
             <div style={{ width: '100%', height: '8px', backgroundColor: 'var(--border)', borderRadius: '4px', overflow: 'hidden' }}>
               <div style={{
                 width: `${Math.min(100, (billingStatus.invoices_processed / billingStatus.trial_limit) * 100)}%`,
@@ -133,15 +132,13 @@ function Settings() {
             </div>
 
             <p style={{ fontSize: '12px', color: 'var(--text-sec)', margin: '8px 0 0 0' }}>
-              Te quedan <strong>{billingStatus.trial_remaining} factura{billingStatus.trial_remaining !== 1 ? 's' : ''} gratuita{billingStatus.trial_remaining !== 1 ? 's' : ''}</strong> sin compromiso antes de activar tu suscripción.
+              {t.settings.trialRemainingPrefix} <strong>{billingStatus.trial_remaining}</strong> {t.settings.trialRemainingSuffix}
             </p>
           </div>
         )}
 
         <p style={{ fontSize: '14px', color: 'var(--text-sec)', lineHeight: '1.5', margin: '0 0 20px 0' }}>
-          {billingStatus?.subscription_active
-            ? 'Tu cuenta dispone de procesamiento ilimitado de facturas por IA, reconciliación matemática y mapeo dinámico a ERP. Puedes gestionar tus tarjetas, descargar facturas de suscripción o cancelar desde el portal de Stripe.'
-            : 'El Plan Pro incluye facturas ilimitadas con Gemini 2.5 Flash, exportador dinámico a ERP y soporte prioritario por 49€ al mes.'}
+          {billingStatus?.subscription_active ? t.settings.proDesc : t.settings.trialDesc}
         </p>
 
         {statusMsg && (
@@ -169,7 +166,7 @@ function Settings() {
               gap: '8px'
             }}
           >
-            ⚙️ Abrir Stripe Customer Portal
+            {t.settings.openStripePortal}
           </button>
         ) : (
           <button
@@ -188,18 +185,17 @@ function Settings() {
               boxShadow: '0 4px 12px rgba(0, 122, 255, 0.25)'
             }}
           >
-            🚀 Activar Plan Pro (49€/mes)
+            {t.settings.activateProBtn}
           </button>
         )}
       </div>
 
-      {/* Tarjeta 3: Sesión y Privacidad */}
       <div style={cardStyle}>
         <h3 style={{ fontSize: '18px', fontWeight: '700', margin: '0 0 12px 0' }}>
-          🔒 Seguridad y Sesión
+          {t.settings.securityCardTitle}
         </h3>
         <p style={{ fontSize: '13px', color: 'var(--text-sec)', margin: '0 0 16px 0' }}>
-          DocuFlow aplica el protocolo de Muro Legal: los archivos procesados se eliminan físicamente de los servidores tras 24 horas.
+          {t.settings.securityDesc}
         </p>
         <button
           onClick={logout}
@@ -215,7 +211,7 @@ function Settings() {
             cursor: 'pointer'
           }}
         >
-          Cerrar Sesión
+          {t.nav.logout}
         </button>
       </div>
     </div>

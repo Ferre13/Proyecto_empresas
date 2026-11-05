@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 
 function Register() {
   const [companyName, setCompanyName] = useState('');
@@ -11,16 +12,17 @@ function Register() {
   const [successMsg, setSuccessMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const { register } = useAuth();
+  const { t } = useLanguage();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!companyName || !email || !password) {
-      setError('Por favor, rellena todos los campos.');
+      setError(t.auth.fillAllFields);
       return;
     }
     if (!acceptedTerms) {
-      setError('Debes aceptar los Términos de Contratación y la Política de Protección de Datos.');
+      setError(t.auth.mustAcceptTerms);
       return;
     }
     setError('');
@@ -31,10 +33,10 @@ function Register() {
       if (data?.session) {
         navigate('/app/upload', { replace: true });
       } else {
-        setSuccessMsg('¡Cuenta registrada con éxito! Si tu proyecto requiere confirmación de email, por favor revisa tu correo electrónico para verificar tu cuenta antes de iniciar sesión.');
+        setSuccessMsg(t.auth.registerSuccess);
       }
     } catch (err) {
-      setError(err.message || 'Error al crear la cuenta. Inténtalo de nuevo.');
+      setError(err.message || t.auth.loginError);
     } finally {
       setSubmitting(false);
     }
@@ -65,10 +67,10 @@ function Register() {
     }}>
       <div style={{ textAlign: 'center', marginBottom: '24px' }}>
         <h2 style={{ fontSize: '24px', fontWeight: '800', letterSpacing: '-0.02em', margin: '0 0 6px 0', color: 'var(--text)' }}>
-          Crea tu cuenta en DocuFlow
+          {t.auth.registerTitle}
         </h2>
         <p style={{ color: 'var(--text-sec)', fontSize: '14px', margin: 0 }}>
-          Comienza con <strong>5 facturas de prueba gratuitas</strong> sin tarjeta
+          {t.auth.registerSubtitle}
         </p>
       </div>
 
@@ -87,7 +89,7 @@ function Register() {
           {successMsg}
           <div style={{ marginTop: '12px' }}>
             <Link to="/login" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>
-              Ir a Iniciar Sesión ➔
+              {t.auth.goToLogin}
             </Link>
           </div>
         </div>
@@ -111,13 +113,13 @@ function Register() {
       <form onSubmit={handleSubmit}>
         <div>
           <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '6px' }}>
-            Nombre de la Empresa o Razón Social
+            {t.auth.companyLabel}
           </label>
           <input
             type="text"
             value={companyName}
             onChange={(e) => setCompanyName(e.target.value)}
-            placeholder="Acme Soluciones S.L."
+            placeholder={t.auth.companyPlaceholder}
             style={inputStyle}
             required
           />
@@ -125,13 +127,13 @@ function Register() {
 
         <div>
           <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '6px' }}>
-            Correo Electrónico Corporativo
+            {t.auth.corpEmailLabel}
           </label>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="contabilidad@empresa.com"
+            placeholder={t.auth.corpEmailPlaceholder}
             style={inputStyle}
             required
           />
@@ -139,20 +141,19 @@ function Register() {
 
         <div>
           <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '6px' }}>
-            Contraseña Segura
+            {t.auth.securePasswordLabel}
           </label>
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Mínimo 8 caracteres"
+            placeholder={t.auth.passwordMinPlaceholder}
             style={inputStyle}
             minLength={8}
             required
           />
         </div>
 
-        {/* Checkbox Legal RGPD */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '20px' }}>
           <input
             type="checkbox"
@@ -163,13 +164,13 @@ function Register() {
             required
           />
           <label htmlFor="terms" style={{ fontSize: '12px', color: 'var(--text-sec)', lineHeight: '1.4', cursor: 'pointer' }}>
-            Acepto los{' '}
+            {t.auth.acceptTermsPrefix}{' '}
             <Link to="/legal/terminos" target="_blank" style={{ color: 'var(--accent)', textDecoration: 'none' }}>
-              Términos de Contratación
+              {t.auth.termsLink}
             </Link>{' '}
-            y la{' '}
+            {t.auth.andThe}{' '}
             <Link to="/legal/proteccion-datos" target="_blank" style={{ color: 'var(--accent)', textDecoration: 'none' }}>
-              Política de Protección de Datos (RGPD)
+              {t.auth.privacyLink}
             </Link>.
           </label>
         </div>
@@ -193,14 +194,14 @@ function Register() {
             marginBottom: '16px'
           }}
         >
-          {submitting ? 'Creando cuenta...' : 'Crear Cuenta y Probar Gratis'}
+          {submitting ? t.auth.creatingAccount : t.auth.registerBtn}
         </button>
       </form>
 
       <div style={{ textAlign: 'center', fontSize: '13px', color: 'var(--text-sec)', marginTop: '16px' }}>
-        ¿Ya tienes cuenta?{' '}
+        {t.auth.alreadyHaveAccount}{' '}
         <Link to="/login" style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: '600' }}>
-          Inicia sesión
+          {t.auth.loginHere}
         </Link>
       </div>
     </div>

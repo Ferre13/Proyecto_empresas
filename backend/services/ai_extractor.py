@@ -7,8 +7,8 @@ from typing import Optional, Dict, Any
 # Configurar la API de Gemini
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
-# Usamos Gemini 2.5 Flash como motor de extracción híbrido
-MODEL_NAME = 'gemini-2.5-flash' 
+# Modelo de extracción configurable desde .env (por defecto gemini-2.5-flash)
+MODEL_NAME = settings.GEMINI_MODEL
 
 SYSTEM_PROMPT = """
 Eres un auditor experto en cuentas por pagar. Analiza la factura adjunta y extrae la información en formato JSON.
@@ -72,7 +72,7 @@ def extract_invoice_data_with_gemini(
     Soporta modo visual (PDF/Imágenes) mediante genai.upload_file y modo texto (Word/Excel/CSV).
     """
     model = genai.GenerativeModel(
-        model_name=MODEL_NAME,
+        model_name=settings.GEMINI_MODEL or MODEL_NAME,
         system_instruction=SYSTEM_PROMPT,
     )
     generation_config = genai.GenerationConfig(

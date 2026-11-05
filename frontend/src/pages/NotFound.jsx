@@ -1,8 +1,10 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useLanguage } from '../context/LanguageContext';
 
 function NotFound() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   return (
     <div style={{
@@ -16,10 +18,10 @@ function NotFound() {
     }}>
       <div style={{ fontSize: '56px', marginBottom: '16px' }}>🔍</div>
       <h2 style={{ fontSize: '26px', fontWeight: '800', letterSpacing: '-0.03em', margin: '0 0 10px 0', color: 'var(--text)' }}>
-        Página no encontrada
+        {t.misc.notFoundTitle}
       </h2>
       <p style={{ color: 'var(--text-sec)', fontSize: '15px', maxWidth: '420px', lineHeight: '1.6', margin: '0 0 28px 0' }}>
-        La ruta a la que intentas acceder no existe o ha sido movida.
+        {t.misc.notFoundDesc}
       </p>
       <button
         className="apple-btn"
@@ -35,7 +37,7 @@ function NotFound() {
           cursor: 'pointer'
         }}
       >
-        Ir al Inicio
+        {t.misc.goHome}
       </button>
     </div>
   );

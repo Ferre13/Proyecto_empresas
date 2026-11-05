@@ -1,7 +1,10 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useLanguage } from '../context/LanguageContext';
 
 function Footer() {
+  const { t } = useLanguage();
+
   const footerStyle = {
     marginTop: '64px',
     padding: '32px 24px',
@@ -38,35 +41,35 @@ function Footer() {
         <ul style={linksStyle}>
           <li>
             <Link to="/legal/aviso-legal" style={linkItemStyle} className="apple-btn">
-              Aviso Legal (LSSI)
+              {t.footer.legalNotice}
             </Link>
           </li>
           <li>
             <Link to="/legal/proteccion-datos" style={linkItemStyle} className="apple-btn">
-              Protección de Datos & DPA (RGPD)
+              {t.footer.dataProtection}
             </Link>
           </li>
           <li>
             <Link to="/legal/terminos" style={linkItemStyle} className="apple-btn">
-              Términos de Contratación
+              {t.footer.terms}
             </Link>
           </li>
           <li>
             <Link to="/legal/almacenamiento" style={linkItemStyle} className="apple-btn">
-              Almacenamiento Local & Cookies
+              {t.footer.cookies}
             </Link>
           </li>
         </ul>
       </nav>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
-        <span>🔒 Cumplimiento estricto RGPD & LSSI-CE</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <span>{t.footer.complianceBadge}</span>
         <span>•</span>
-        <span>⚡ Aislamiento Multi-tenant por Hardware & Software</span>
+        <span>{t.footer.isolationBadge}</span>
       </div>
 
       <div style={{ fontSize: '12px', opacity: 0.8 }}>
-        © {new Date().getFullYear()} DocuFlow AP Automation. Todos los derechos reservados.
+        © {new Date().getFullYear()} DocuFlow AP Automation. {t.footer.rights}
       </div>
     </footer>
   );

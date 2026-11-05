@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     
     # IA: Gemini
     GEMINI_API_KEY: str = "your-gemini-api-key-here"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
     
     # Billing Stripe
     STRIPE_SECRET_KEY: str = "your-stripe-secret-key-here"

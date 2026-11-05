@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { useLanguage } from '../context/LanguageContext';
 
 const theme = {
   surface: 'var(--surface)',
@@ -33,27 +34,12 @@ const ALL_EDITABLE_FIELDS = [
   'currency'
 ];
 
-const FIELD_LABELS = {
-  is_valid_invoice: 'Validez del Documento',
-  invoice_number: 'Número de Factura',
-  issue_date: 'Fecha de Emisión',
-  due_date: 'Fecha de Vencimiento',
-  supplier_name: 'Proveedor (Razón Social)',
-  supplier_tax_id: 'NIF / CIF Proveedor',
-  customer_name: 'Cliente (Razón Social)',
-  customer_tax_id: 'NIF / CIF Cliente',
-  subtotal: 'Base Imponible (€)',
-  tax_amount: 'Impuestos (€)',
-  retention_amount: 'Retención IRPF (€)',
-  total_amount: 'Importe Total (€)',
-  currency: 'Moneda'
-};
-
 const CURRENCY_OPTIONS = ['EUR', 'USD', 'GBP', 'JPY', 'CNY', 'MXN', 'BRL', 'CAD', 'AUD', 'CHF'];
 
 function Triage() {
   const { invoiceId } = useParams();
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [invoice, setInvoice] = useState(null);
   const [formData, setFormData] = useState({});
   const [error, setError] = useState(null);
@@ -61,7 +47,6 @@ function Triage() {
   const [batchInvoices, setBatchInvoices] = useState([]);
   const [isDirty, setIsDirty] = useState(false);
 
-  // Estados para separación según Mapeo ERP
   const [activeFieldKeys, setActiveFieldKeys] = useState(ALL_EDITABLE_FIELDS);
   const [inactiveFieldKeys, setInactiveFieldKeys] = useState([]);
   const [showSecondaryFields, setShowSecondaryFields] = useState(false);
@@ -73,7 +58,7 @@ function Triage() {
       try {
         const res = await api.get(`/invoices/${invoiceId}`);
         setInvoice(res.data);
-        
+
         const rawData = res.data.extracted_data || {};
         const cleanedData = {};
         Object.keys(rawData).forEach(k => {
@@ -94,7 +79,7 @@ function Triage() {
         createdUrl = window.URL.createObjectURL(new Blob([fileRes.data], { type: mimeType }));
         setFilePreview({ url: createdUrl, isPdf, isImage });
       } catch (err) {
-        setError("Error cargando factura o documento");
+        setError(t.triage.loadError);
       }
     };
 
@@ -151,13 +136,13 @@ function Triage() {
         }
       }
     } catch (err) {
-      alert("Error al guardar cambios");
+      alert(t.triage.saveError);
     }
   };
 
   const safeNavigate = (targetPath) => {
     if (isDirty) {
-      if (window.confirm("Tienes cambios sin guardar. ¿Deseas salir?")) {
+      if (window.confirm(t.triage.unsavedChanges)) {
         navigate(targetPath);
       }
     } else {
@@ -168,7 +153,7 @@ function Triage() {
   if (error) return <div style={{ color: theme.error, padding: '40px', textAlign: 'center' }}>{error}</div>;
   if (!invoice) return (
     <div style={{ padding: '60px', textAlign: 'center', color: theme.textSecondary }}>
-      Cargando documento para revisión...
+      {t.triage.loadingDoc}
     </div>
   );
 
@@ -203,7 +188,7 @@ function Triage() {
   });
 
   const renderSingleField = (key, isSecondary = false) => {
-    const label = FIELD_LABELS[key] || key;
+    const label = t.triage.fields?.[key] || key;
     const val = formData[key];
     const isMissing = (val === undefined || val === '' || val === null || val === 'null');
 
@@ -220,19 +205,19 @@ function Triage() {
           justifyContent: 'space-between'
         }}>
           <div>
-            <div style={{ fontWeight: '700', fontSize: '14px', color: theme.text }}>Validez de la Factura</div>
+            <div style={{ fontWeight: '700', fontSize: '14px', color: theme.text }}>{t.triage.validityTitle}</div>
             <div style={{ fontSize: '12px', color: theme.textSecondary, marginTop: '2px' }}>
-              {isValid ? 'Formato y estructura correctos para contabilizar' : 'Requiere revisión o datos incompletos'}
+              {isValid ? t.triage.validityOk : t.triage.validityReview}
             </div>
           </div>
           <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '8px', fontSize: '13px', fontWeight: '700' }}>
-            <input 
-              type="checkbox" 
-              checked={isValid} 
-              onChange={(e) => handleFieldChange(key, e.target.checked)} 
+            <input
+              type="checkbox"
+              checked={isValid}
+              onChange={(e) => handleFieldChange(key, e.target.checked)}
               style={{ width: '18px', height: '18px', accentColor: theme.success }}
             />
-            Válida
+            {t.triage.validCheckbox}
           </label>
         </div>
       );
@@ -246,27 +231,27 @@ function Triage() {
           </label>
           {isMissing && !isSecondary && (
             <span style={{ fontSize: '11px', fontWeight: '600', color: theme.warning }}>
-              ⚠️ Sin detectar
+              {t.triage.missingBadge}
             </span>
           )}
         </div>
         {key === 'currency' ? (
           <div style={{ position: 'relative' }}>
-            <input list="currencies" className="triage-input" value={val ?? ''} onChange={(e) => handleFieldChange(key, e.target.value)} style={inputStyle} placeholder="EUR, USD, etc." />
+            <input list="currencies" className="triage-input" value={val ?? ''} onChange={(e) => handleFieldChange(key, e.target.value)} style={inputStyle} placeholder="EUR, USD, GBP..." />
             <datalist id="currencies">{CURRENCY_OPTIONS.map(c => <option key={c} value={c} />)}</datalist>
           </div>
         ) : (
-          <input 
-            type={['subtotal', 'tax_amount', 'total_amount'].includes(key) ? "number" : "text"} 
+          <input
+            type={['subtotal', 'tax_amount', 'total_amount'].includes(key) ? "number" : "text"}
             step="0.01"
             className="triage-input"
-            value={val ?? ''} 
-            onChange={(e) => handleFieldChange(key, e.target.value)} 
+            value={val ?? ''}
+            onChange={(e) => handleFieldChange(key, e.target.value)}
             style={{
               ...inputStyle,
               borderColor: (isMissing && !isSecondary) ? theme.warning : theme.border
-            }} 
-            placeholder={`Introduce ${label.toLowerCase()}...`}
+            }}
+            placeholder={`${t.triage.enterPlaceholder} ${label.toLowerCase()}...`}
           />
         )}
       </div>
@@ -274,10 +259,10 @@ function Triage() {
   };
 
   return (
-    <div style={{ 
-      display: 'flex', 
-      flexDirection: 'column', 
-      height: 'calc(100vh - 120px)', 
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: 'calc(100vh - 120px)',
       backgroundColor: theme.bg,
       borderRadius: theme.radius,
       overflow: 'hidden',
@@ -292,87 +277,83 @@ function Triage() {
           box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
         }
       `}</style>
-      
+
       {/* Header Toolbar */}
-      <div style={{ 
-        padding: '14px 28px', 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
+      <div style={{
+        padding: '14px 28px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         backgroundColor: theme.surface,
         borderBottom: `1px solid ${theme.border}`,
         zIndex: 10
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           <button className="apple-btn" onClick={() => safeNavigate(`/app/batch/${invoice.batch_id}`)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', color: theme.accent, fontWeight: '700', padding: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
-            ← Volver al Lote
+            {t.triage.backToBatch}
           </button>
           <div style={{ height: '20px', width: '1px', backgroundColor: theme.border }}></div>
           <span style={{ fontSize: '14px', fontWeight: '600', color: theme.textSecondary }}>
-            Documento <span style={{ color: theme.text }}>{currentIndex + 1}</span> de <span style={{ color: theme.text }}>{batchInvoices.length}</span>
+            {t.triage.docCounter} <span style={{ color: theme.text }}>{currentIndex + 1}</span> {t.triage.of} <span style={{ color: theme.text }}>{batchInvoices.length}</span>
           </span>
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>
           {prevInvoice && (
             <button className="apple-btn" onClick={() => safeNavigate(`/app/triage/${prevInvoice.id}`)} style={{ ...buttonStyle(), border: `1px solid ${theme.border}`, background: theme.surface, color: theme.text }}>
-              Anterior
+              {t.triage.prev}
             </button>
           )}
-          <button 
-            className="apple-btn" 
+          <button
+            className="apple-btn"
             onClick={() => handleSave(true)}
-            style={{ 
+            style={{
               ...buttonStyle(),
-              backgroundColor: nextInvoice ? theme.accent : theme.success, 
-              color: '#FFF', 
+              backgroundColor: nextInvoice ? theme.accent : theme.success,
+              color: '#FFF',
               boxShadow: '0 4px 12px rgba(0, 122, 255, 0.2)',
               padding: '10px 24px'
             }}
           >
-            {nextInvoice ? 'Guardar y Siguiente ➔' : 'Finalizar Lote ✅'}
+            {nextInvoice ? t.triage.saveAndNext : t.triage.finishBatch}
           </button>
         </div>
       </div>
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Document Viewer (PDF or Image) */}
         <div style={{ flex: 1.2, backgroundColor: 'rgba(0,0,0,0.03)', position: 'relative', borderRight: `1px solid ${theme.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto' }}>
           {filePreview.url ? (
             filePreview.isImage ? (
               <div style={{ width: '100%', height: '100%', padding: '24px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <img 
-                  src={filePreview.url} 
-                  alt="Invoice" 
-                  style={{ 
-                    maxWidth: '100%', 
-                    maxHeight: '100%', 
-                    objectFit: 'contain', 
-                    borderRadius: '8px', 
+                <img
+                  src={filePreview.url}
+                  alt="Invoice"
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    objectFit: 'contain',
+                    borderRadius: '8px',
                     boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
                     border: `1px solid ${theme.border}`
-                  }} 
+                  }}
                 />
               </div>
             ) : (
               <iframe src={filePreview.url} width="100%" height="100%" title="Invoice" style={{ border: 'none' }} />
             )
           ) : (
-            <div style={{ color: theme.textSecondary, fontWeight: '600' }}>Cargando vista previa del documento...</div>
+            <div style={{ color: theme.textSecondary, fontWeight: '600' }}>{t.triage.loadingPreview}</div>
           )}
         </div>
 
-        {/* Editor Side */}
         <div style={{ flex: 0.8, padding: '36px', overflowY: 'auto', backgroundColor: theme.surface }}>
           <div style={{ marginBottom: '28px' }}>
-            <h2 style={{ margin: '0 0 6px 0', fontSize: '22px', fontWeight: '700', letterSpacing: '-0.03em', color: theme.text }}>Verificación de Datos</h2>
+            <h2 style={{ margin: '0 0 6px 0', fontSize: '22px', fontWeight: '700', letterSpacing: '-0.03em', color: theme.text }}>{t.triage.dataVerification}</h2>
             <p style={{ margin: 0, fontSize: '13px', color: theme.textSecondary, fontWeight: '500' }}>{invoice.original_filename}</p>
           </div>
-          
+
           <form style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {/* 1. Campos Activos en el Mapeo ERP */}
             {activeFieldKeys.map(key => renderSingleField(key, false))}
 
-            {/* 2. Campos Inactivos / Secundarios (No exportados a ERP) */}
             {inactiveFieldKeys.length > 0 && (
               <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: `1px dashed ${theme.border}` }}>
                 <button
@@ -392,7 +373,7 @@ function Triage() {
                     marginBottom: showSecondaryFields ? '16px' : '0'
                   }}
                 >
-                  {showSecondaryFields ? '▼ Ocultar Campos No Exportados' : '▶ Ver Campos Adicionales (No Incluidos en Mapeo ERP)'}
+                  {showSecondaryFields ? t.triage.hideSecondary : t.triage.showSecondary}
                 </button>
 
                 {showSecondaryFields && (

@@ -1,9 +1,11 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 
 function Navbar() {
-  const { user, billingStatus, logout, isAuthenticated } = useAuth();
+  const { billingStatus, logout, isAuthenticated } = useAuth();
+  const { lang, setLang, t, languages } = useLanguage();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -24,6 +26,8 @@ function Navbar() {
     zIndex: 1000,
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: '12px',
     transition: 'background 0.3s ease'
   };
 
@@ -38,6 +42,47 @@ function Navbar() {
     transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
     letterSpacing: '-0.01em'
   });
+
+  const langSwitcher = (
+    <div style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      backgroundColor: 'var(--bg)',
+      border: '1px solid var(--border)',
+      borderRadius: '10px',
+      padding: '3px',
+      gap: '2px'
+    }}>
+      {languages.map((item) => {
+        const active = lang === item.code;
+        return (
+          <button
+            key={item.code}
+            onClick={() => setLang(item.code)}
+            title={item.label}
+            style={{
+              border: 'none',
+              background: active ? 'var(--surface)' : 'transparent',
+              color: active ? 'var(--text)' : 'var(--text-sec)',
+              fontWeight: active ? '700' : '500',
+              fontSize: '11px',
+              padding: '4px 8px',
+              borderRadius: '7px',
+              cursor: 'pointer',
+              boxShadow: active ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+              transition: 'all 0.18s cubic-bezier(0.4, 0, 0.2, 1)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            <span>{item.flag}</span>
+            <span>{item.short}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
 
   return (
     <nav style={navStyle}>
@@ -65,15 +110,13 @@ function Navbar() {
 
       {/* Navegación según estado de autenticación */}
       {isAuthenticated ? (
-        // Menú para usuarios autenticados dentro de /app
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: '6px', marginRight: '16px' }}>
-            <Link to="/app/upload" style={getLinkStyle('/app/upload')}>Subir Facturas</Link>
-            <Link to="/app/batches" style={getLinkStyle('/app/batches')}>Lotes Procesados</Link>
-            <Link to="/app/mapping" style={getLinkStyle('/app/mapping')}>Mapeo ERP</Link>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '6px', marginRight: '8px' }}>
+            <Link to="/app/upload" style={getLinkStyle('/app/upload')}>{t.nav.upload}</Link>
+            <Link to="/app/batches" style={getLinkStyle('/app/batches')}>{t.nav.batches}</Link>
+            <Link to="/app/mapping" style={getLinkStyle('/app/mapping')}>{t.nav.mapping}</Link>
           </div>
 
-          {/* Badge de Suscripción o Trial */}
           {billingStatus && (
             <div style={{
               fontSize: '11px',
@@ -87,11 +130,12 @@ function Navbar() {
               alignItems: 'center',
               gap: '4px'
             }}>
-              <span>{billingStatus.subscription_active ? '● Plan Pro' : `Prueba (${billingStatus.trial_remaining}/5)`}</span>
+              <span>{billingStatus.subscription_active ? t.nav.planPro : `${t.nav.trial} (${billingStatus.trial_remaining}/5)`}</span>
             </div>
           )}
 
-          {/* Perfil & Ajustes */}
+          {langSwitcher}
+
           <Link
             to="/app/settings"
             style={{
@@ -100,12 +144,11 @@ function Navbar() {
               alignItems: 'center',
               gap: '6px'
             }}
-            title="Perfil y Facturación"
+            title={t.nav.settingsTitle}
           >
-            ⚙️ Ajustes
+            ⚙️ {t.nav.settings}
           </Link>
 
-          {/* Salir */}
           <button
             onClick={handleLogout}
             style={{
@@ -122,25 +165,26 @@ function Navbar() {
             onMouseEnter={(e) => e.currentTarget.style.color = 'var(--error)'}
             onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-sec)'}
           >
-            Cerrar Sesión
+            {t.nav.logout}
           </button>
         </div>
       ) : (
-        // Menú público (Landing / Marketing)
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: '12px' }}>
             <a href="/#features" style={{ textDecoration: 'none', color: 'var(--text-sec)', fontSize: '14px', fontWeight: '500' }}>
-              Funcionalidades
+              {t.nav.features}
             </a>
             <a href="/#how-it-works" style={{ textDecoration: 'none', color: 'var(--text-sec)', fontSize: '14px', fontWeight: '500' }}>
-              Cómo Funciona
+              {t.nav.howItWorks}
             </a>
             <a href="/#pricing" style={{ textDecoration: 'none', color: 'var(--text-sec)', fontSize: '14px', fontWeight: '500' }}>
-              Precios
+              {t.nav.pricing}
             </a>
           </div>
 
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginLeft: '12px' }}>
+          {langSwitcher}
+
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <Link
               to="/login"
               style={{
@@ -148,12 +192,12 @@ function Navbar() {
                 color: 'var(--text)',
                 fontSize: '14px',
                 fontWeight: '600',
-                padding: '8px 16px',
+                padding: '8px 14px',
                 borderRadius: '10px',
                 transition: 'opacity 0.2s'
               }}
             >
-              Iniciar Sesión
+              {t.nav.login}
             </Link>
             <Link
               to="/register"
@@ -169,7 +213,7 @@ function Navbar() {
                 boxShadow: '0 2px 8px rgba(0, 122, 255, 0.25)'
               }}
             >
-              Probar Gratis ➔
+              {t.nav.tryFree}
             </Link>
           </div>
         </div>

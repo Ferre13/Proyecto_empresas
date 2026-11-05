@@ -1,8 +1,10 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useLanguage } from '../context/LanguageContext';
 
 function Cancel() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   return (
     <div style={{
@@ -28,7 +30,7 @@ function Cancel() {
         margin: '0 0 12px 0',
         color: 'var(--text)'
       }}>
-        Pago no completado
+        {t.misc.cancelTitle}
       </h2>
 
       <p style={{
@@ -38,7 +40,7 @@ function Cancel() {
         lineHeight: '1.6',
         margin: '0 0 32px 0'
       }}>
-        Has cancelado la operación en Stripe. No se ha realizado ningún cargo en tu tarjeta. Puedes intentarlo de nuevo cuando lo desees.
+        {t.misc.cancelDesc}
       </p>
 
       <button
@@ -56,7 +58,7 @@ function Cancel() {
           boxShadow: '0 4px 12px rgba(0, 122, 255, 0.25)'
         }}
       >
-        Volver a la aplicación
+        {t.misc.backToApp}
       </button>
     </div>
   );

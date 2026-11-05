@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { useLanguage } from '../context/LanguageContext';
 
 const theme = {
   surface: 'var(--surface)',
@@ -21,6 +22,7 @@ function BatchList() {
   const [batches, setBatches] = useState([]);
   const [showDeleteModal, setShowDeleteModal] = useState(null);
   const navigate = useNavigate();
+  const { t, lang } = useLanguage();
 
   const fetchBatches = async () => {
     try {
@@ -73,17 +75,17 @@ function BatchList() {
   };
 
   const getStatusLabel = (status) => {
-    switch(status) {
-      case 'COMPLETED': return 'Completado';
-      case 'NEEDS_REVIEW': return 'Requiere Revisión';
-      case 'FAILED': return 'Error de Procesamiento';
-      case 'PROCESSING': return 'Procesando con IA...';
-      default: return 'En Cola';
+    switch (status) {
+      case 'COMPLETED': return t.batches.statusCompleted;
+      case 'NEEDS_REVIEW': return t.batches.statusNeedsReview;
+      case 'FAILED': return t.batches.statusFailed;
+      case 'PROCESSING': return t.batches.statusProcessing;
+      default: return t.batches.statusQueued;
     }
   };
 
   const getStatusColor = (status) => {
-    switch(status) {
+    switch (status) {
       case 'COMPLETED': return theme.success;
       case 'NEEDS_REVIEW': return theme.warning;
       case 'FAILED': return theme.error;
@@ -95,15 +97,15 @@ function BatchList() {
     <div style={{ animation: 'fadeIn 0.5s ease-out' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '28px' }}>
         <div>
-          <h2 style={{ fontSize: '26px', fontWeight: '700', letterSpacing: '-0.03em', margin: '0 0 6px 0' }}>Historial de Lotes</h2>
-          <p style={{ color: theme.textSecondary, fontSize: '14px', margin: 0 }}>Historial de procesamientos de facturas por lotes</p>
+          <h2 style={{ fontSize: '26px', fontWeight: '700', letterSpacing: '-0.03em', margin: '0 0 6px 0' }}>{t.batches.title}</h2>
+          <p style={{ color: theme.textSecondary, fontSize: '14px', margin: 0 }}>{t.batches.subtitle}</p>
         </div>
-        <span style={{ color: theme.textSecondary, fontSize: '14px', fontWeight: '500' }}>{batches.length} lotes totales</span>
+        <span style={{ color: theme.textSecondary, fontSize: '14px', fontWeight: '500' }}>{batches.length} {t.batches.totalBatches}</span>
       </div>
 
       {batches.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '64px', color: theme.textSecondary, backgroundColor: theme.surface, borderRadius: theme.radiusSmall, border: `1px solid ${theme.border}` }}>
-          <p style={{ fontSize: '16px', margin: 0 }}>No hay lotes procesados todavía. Comienza subiendo facturas.</p>
+          <p style={{ fontSize: '16px', margin: 0 }}>{t.batches.empty}</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -111,17 +113,17 @@ function BatchList() {
             const statusColor = getStatusColor(batch.status);
             const statusLabel = getStatusLabel(batch.status);
             return (
-              <div 
-                key={batch.id} 
-                className="apple-card clickable-card" 
+              <div
+                key={batch.id}
+                className="apple-card clickable-card"
                 style={cardStyle}
                 onClick={() => navigate(`/app/batch/${batch.id}`)}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                  <div style={{ 
-                    padding: '6px 14px', 
-                    borderRadius: '20px', 
-                    fontSize: '12px', 
+                  <div style={{
+                    padding: '6px 14px',
+                    borderRadius: '20px',
+                    fontSize: '12px',
                     fontWeight: '600',
                     color: statusColor,
                     backgroundColor: `${statusColor}15`,
@@ -131,21 +133,21 @@ function BatchList() {
                   </div>
                   <div>
                     <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: '600', color: theme.text }}>
-                      Lote de Facturas
+                      {t.batches.batchCardTitle}
                     </h4>
                     <p style={{ margin: 0, fontSize: '13px', color: theme.textSecondary }}>
-                      {new Date(batch.created_at).toLocaleString('es-ES', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      {new Date(batch.created_at).toLocaleString(lang, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>
                 </div>
-                
+
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                   <span style={{ fontSize: '14px', fontWeight: '600', color: theme.accent }}>
-                    Ver lote ➔
+                    {t.batches.viewBatch}
                   </span>
-                  <button 
+                  <button
                     onClick={(e) => handleDeleteClick(e, batch.id)}
-                    style={{ 
+                    style={{
                       background: 'none',
                       border: 'none',
                       color: theme.textSecondary,
@@ -159,7 +161,7 @@ function BatchList() {
                     }}
                     onMouseEnter={(e) => e.currentTarget.style.color = theme.error}
                     onMouseLeave={(e) => e.currentTarget.style.color = theme.textSecondary}
-                    title="Eliminar Lote"
+                    title={t.batches.delete}
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="3 6 5 6 21 6"></polyline>
@@ -175,7 +177,6 @@ function BatchList() {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <div style={{
           position: 'fixed',
@@ -187,7 +188,7 @@ function BatchList() {
           justifyContent: 'center',
           zIndex: 2000
         }} onClick={() => setShowDeleteModal(null)}>
-          <div 
+          <div
             style={{
               background: theme.surface,
               padding: '32px',
@@ -200,13 +201,13 @@ function BatchList() {
             }}
             onClick={e => e.stopPropagation()}
           >
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '20px', fontWeight: '600' }}>Confirm Deletion</h3>
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '20px', fontWeight: '600' }}>{t.batches.deleteTitle}</h3>
             <p style={{ margin: '0 0 24px 0', color: theme.textSecondary, fontSize: '15px', lineHeight: 1.4 }}>
-              Are you sure you want to permanently delete this batch? This action cannot be undone.
+              {t.batches.deleteConfirmText}
             </p>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-              <button className="apple-btn" onClick={() => setShowDeleteModal(null)} style={{ padding: '10px 20px', borderRadius: '8px', border: `1px solid ${theme.border}`, background: 'transparent', color: theme.text, cursor: 'pointer', fontWeight: '500' }}>Cancel</button>
-              <button className="apple-btn" onClick={confirmDelete} style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', background: theme.error, color: '#fff', cursor: 'pointer', fontWeight: '600' }}>Delete</button>
+              <button className="apple-btn" onClick={() => setShowDeleteModal(null)} style={{ padding: '10px 20px', borderRadius: '8px', border: `1px solid ${theme.border}`, background: 'transparent', color: theme.text, cursor: 'pointer', fontWeight: '500' }}>{t.batches.cancel}</button>
+              <button className="apple-btn" onClick={confirmDelete} style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', background: theme.error, color: '#fff', cursor: 'pointer', fontWeight: '600' }}>{t.batches.delete}</button>
             </div>
           </div>
         </div>

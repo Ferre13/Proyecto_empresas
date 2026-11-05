@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 
 function Login() {
   const [email, setEmail] = useState('');
@@ -8,6 +9,7 @@ function Login() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const { login } = useAuth();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -16,7 +18,7 @@ function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email || !password) {
-      setError('Por favor, introduce tu email y contraseña.');
+      setError(t.auth.fillAllFields);
       return;
     }
     setError('');
@@ -25,13 +27,11 @@ function Login() {
       await login(email, password);
       navigate(from, { replace: true });
     } catch (err) {
-      setError(err.message || 'Error al iniciar sesión. Revisa tus credenciales.');
+      setError(err.message || t.auth.loginError);
     } finally {
       setSubmitting(false);
     }
   };
-
-
 
   const inputStyle = {
     width: '100%',
@@ -73,10 +73,10 @@ function Login() {
           D
         </div>
         <h2 style={{ fontSize: '24px', fontWeight: '800', letterSpacing: '-0.02em', margin: '0 0 6px 0', color: 'var(--text)' }}>
-          Acceso a DocuFlow
+          {t.auth.loginTitle}
         </h2>
         <p style={{ color: 'var(--text-sec)', fontSize: '14px', margin: 0 }}>
-          Introduce tus datos para acceder a tu espacio de trabajo
+          {t.auth.loginSubtitle}
         </p>
       </div>
 
@@ -98,13 +98,13 @@ function Login() {
       <form onSubmit={handleSubmit}>
         <div>
           <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '6px' }}>
-            Correo Electrónico
+            {t.auth.emailLabel}
           </label>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="ejemplo@empresa.com"
+            placeholder={t.auth.emailPlaceholder}
             style={inputStyle}
             required
           />
@@ -112,7 +112,7 @@ function Login() {
 
         <div>
           <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '6px' }}>
-            Contraseña
+            {t.auth.passwordLabel}
           </label>
           <input
             type="password"
@@ -143,16 +143,14 @@ function Login() {
             marginBottom: '16px'
           }}
         >
-          {submitting ? 'Iniciando sesión...' : 'Iniciar Sesión'}
+          {submitting ? t.auth.loggingIn : t.auth.loginBtn}
         </button>
       </form>
 
-
-
       <div style={{ textAlign: 'center', fontSize: '13px', color: 'var(--text-sec)', marginTop: '20px' }}>
-        ¿No tienes cuenta?{' '}
+        {t.auth.noAccount}{' '}
         <Link to="/register" style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: '600' }}>
-          Regístrate gratis
+          {t.auth.registerLink}
         </Link>
       </div>
     </div>

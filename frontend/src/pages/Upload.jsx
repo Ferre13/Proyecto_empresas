@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 
 const theme = {
   surface: 'var(--surface)',
@@ -27,6 +28,7 @@ function Upload() {
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
   const { billingStatus, refreshBilling } = useAuth();
+  const { t } = useLanguage();
 
   const handleUpload = async () => {
     if (files.length === 0) return;
@@ -36,43 +38,29 @@ function Upload() {
     }
 
     try {
-      setStatus('Enviando documentos...');
+      setStatus(t.upload.sendingDocs);
       const response = await api.post('/upload/', formData);
       setBatchId(response.data.batch_id);
-      setStatus(`Procesamiento iniciado. ID de Lote: ${response.data.batch_id}`);
+      setStatus(`${t.upload.processingStarted} ${response.data.batch_id}`);
       setNeedsSubscription(false);
       refreshBilling();
     } catch (error) {
       if (error.response && error.response.status === 403) {
         setNeedsSubscription(true);
-        setStatus(error.response?.data?.detail || 'Se requiere una suscripción activa para procesar documentos.');
+        setStatus(error.response?.data?.detail || t.upload.subRequired);
       } else {
-        setStatus('Error al subir los archivos. Por favor, inténtalo de nuevo.');
+        setStatus(t.upload.uploadError);
       }
     }
   };
 
   const handleSubscribe = async () => {
     try {
-      setStatus('Redirigiendo a Stripe Checkout seguro...');
+      setStatus(t.upload.redirectingStripe);
       const response = await api.post('/billing/create-checkout-session');
       window.location.href = response.data.url;
     } catch (error) {
-      setStatus('Error al conectar con la pasarela de pagos Stripe.');
-    }
-  };
-
-  const handleManageBilling = async () => {
-    try {
-      setStatus('Abriendo Portal de Facturación de Stripe...');
-      const response = await api.post('/billing/create-portal-session');
-      window.location.href = response.data.url;
-    } catch (error) {
-      if (error.response && error.response.status === 400) {
-        handleSubscribe();
-      } else {
-        setStatus('No se pudo abrir el portal de facturación.');
-      }
+      setStatus(t.upload.stripeError);
     }
   };
 
@@ -150,8 +138,7 @@ function Upload() {
           filter: brightness(0.95);
         }
       `}</style>
-      
-      {/* Banner de Estado de Prueba / Suscripción */}
+
       {billingStatus?.is_trial && (
         <div style={{
           padding: '14px 20px',
@@ -168,9 +155,9 @@ function Upload() {
           gap: '12px'
         }}>
           <div>
-            <span>🎁 <strong>Periodo de Prueba Activo:</strong> Te quedan </span>
+            <span>{t.upload.trialActive} </span>
             <strong style={{ fontSize: '15px' }}>{billingStatus.trial_remaining}</strong>
-            <span> de {billingStatus.trial_limit} facturas gratuitas para probar.</span>
+            <span> {t.upload.trialOf} {billingStatus.trial_limit} {t.upload.trialFreeInvoices}</span>
           </div>
           <button
             onClick={() => navigate('/app/settings')}
@@ -184,40 +171,39 @@ function Upload() {
               fontSize: '13px'
             }}
           >
-            Activar Plan Pro ➔
+            {t.upload.activatePro}
           </button>
         </div>
       )}
 
-      {/* Upload Section */}
       <div style={{ ...cardStyle }}>
         <div style={{ marginBottom: '8px' }}>
           <h2 style={{ margin: '0 0 6px 0', fontSize: '24px', fontWeight: '700', letterSpacing: '-0.03em', color: theme.text }}>
-            Subida y Procesamiento de Facturas
+            {t.upload.title}
           </h2>
           <p style={{ color: theme.textSecondary, fontSize: '15px', margin: 0, lineHeight: '1.5' }}>
-            La IA extraerá automáticamente todos los datos contables y verificará la integridad matemática de cada documento.
+            {t.upload.subtitle}
           </p>
         </div>
-        
-        <input 
-          type="file" 
-          multiple 
+
+        <input
+          type="file"
+          multiple
           ref={fileInputRef}
           onChange={(e) => setFiles(e.target.files)}
           style={{ display: 'none' }}
         />
 
-        <div 
+        <div
           className={`upload-zone ${isDragging ? 'dragging' : ''}`}
           onDragOver={handleDragOver}
           onDragEnter={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current.click()}
-          style={{ 
-            padding: '64px 32px', 
-            borderRadius: theme.radius, 
+          style={{
+            padding: '64px 32px',
+            borderRadius: theme.radius,
             textAlign: 'center',
             margin: '24px 0 28px 0',
             borderStyle: 'dashed',
@@ -226,39 +212,41 @@ function Upload() {
         >
           <div style={{ fontSize: '52px', marginBottom: '16px', filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.08))' }}>📄</div>
           <p style={{ color: theme.text, fontWeight: '700', fontSize: '18px', margin: '0 0 8px 0', letterSpacing: '-0.01em' }}>
-            {files.length > 0 ? `${files.length} documento${files.length > 1 ? 's' : ''} seleccionado${files.length > 1 ? 's' : ''}` : 'Arrastra aquí tus facturas'}
+            {files.length > 0 ? `${files.length} ${t.upload.filesSelected}` : t.upload.dragHere}
           </p>
           <p style={{ color: theme.textSecondary, fontSize: '14px', margin: 0, opacity: 0.8 }}>
-            Soporta PDF, imágenes (JPG, PNG) o archivos comprimidos (ZIP)
+            {t.upload.supportedFormats}
           </p>
-          
+
           <div style={{ marginTop: '24px' }}>
             <span className="apple-btn" style={{ ...buttonStyle(), pointerEvents: 'none', padding: '10px 24px', fontSize: '14px' }}>
-              Seleccionar archivos
+              {t.upload.selectFilesBtn}
             </span>
           </div>
         </div>
-        
-        <button 
-          className="apple-btn" 
-          onClick={handleUpload} 
+
+        <button
+          className="apple-btn"
+          onClick={handleUpload}
           style={{ ...buttonStyle(files.length === 0), width: '100%', height: '52px' }}
           disabled={files.length === 0}
         >
-          {files.length === 0 ? 'Selecciona documentos para comenzar' : `Procesar ${files.length} Factura${files.length > 1 ? 's' : ''}`}
+          {files.length === 0
+            ? t.upload.selectToStart
+            : `${t.upload.processBtn} ${files.length} ${files.length > 1 ? t.upload.invoicePlural : t.upload.invoiceSingular}`}
         </button>
-        
+
         {status && (
-          <div style={{ 
-            marginTop: '20px', 
+          <div style={{
+            marginTop: '20px',
             padding: '16px',
             borderRadius: '12px',
-            backgroundColor: status.includes('Error') || status.includes('fallado') || needsSubscription ? 'rgba(255, 59, 48, 0.05)' : 'rgba(0, 122, 255, 0.05)',
-            color: status.includes('Error') || status.includes('fallado') || needsSubscription ? theme.error : theme.accent,
-            fontSize: '14px', 
+            backgroundColor: status.includes('Error') || needsSubscription ? 'rgba(255, 59, 48, 0.05)' : 'rgba(0, 122, 255, 0.05)',
+            color: status.includes('Error') || needsSubscription ? theme.error : theme.accent,
+            fontSize: '14px',
             fontWeight: '600',
             textAlign: 'center',
-            border: `1px solid ${status.includes('Error') || status.includes('fallado') || needsSubscription ? 'rgba(255, 59, 48, 0.1)' : 'rgba(0, 122, 255, 0.1)'}`
+            border: `1px solid ${status.includes('Error') || needsSubscription ? 'rgba(255, 59, 48, 0.1)' : 'rgba(0, 122, 255, 0.1)'}`
           }}>
             {status}
           </div>
@@ -269,27 +257,27 @@ function Upload() {
             <button
               className="apple-btn"
               onClick={handleSubscribe}
-              style={{ 
-                ...buttonStyle(), 
-                backgroundColor: theme.success, 
-                width: '100%', 
-                height: '48px', 
+              style={{
+                ...buttonStyle(),
+                backgroundColor: theme.success,
+                width: '100%',
+                height: '48px',
                 fontSize: '15px',
                 color: '#FFF',
                 boxShadow: '0 4px 12px rgba(52, 199, 89, 0.25)'
               }}
             >
-              🚀 Activar Suscripción con Stripe (Checkout)
+              {t.upload.activateStripeBtn}
             </button>
           </div>
         )}
       </div>
-      
+
       {batchId && (
-        <div style={{ 
+        <div style={{
           marginTop: '20px',
-          padding: '20px', 
-          borderRadius: theme.radiusSmall, 
+          padding: '20px',
+          borderRadius: theme.radiusSmall,
           backgroundColor: theme.surface,
           color: theme.text,
           display: 'flex',
@@ -301,16 +289,16 @@ function Upload() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span style={{ fontSize: '24px' }}>⚡</span>
             <div>
-              <div style={{ fontWeight: '700', fontSize: '15px' }}>Lote enviado correctamente</div>
-              <div style={{ color: theme.textSecondary, fontSize: '13px' }}>El worker de IA está procesando los documentos en segundo plano.</div>
+              <div style={{ fontWeight: '700', fontSize: '15px' }}>{t.upload.batchSentTitle}</div>
+              <div style={{ color: theme.textSecondary, fontSize: '13px' }}>{t.upload.batchSentSub}</div>
             </div>
           </div>
-          <button 
+          <button
             className="apple-btn"
             onClick={() => navigate(`/app/batch/${batchId}`)}
             style={{ ...buttonStyle(), padding: '10px 20px', fontSize: '14px' }}
           >
-            Ver estado del Lote
+            {t.upload.viewBatchBtn}
           </button>
         </div>
       )}

@@ -60,7 +60,9 @@ def get_current_user_token_payload(credentials: HTTPAuthorizationCredentials = D
                     "sub": data.get("id"),
                     "email": data.get("email"),
                     "role": data.get("role", "authenticated"),
-                    "company_name": metadata.get("company_name")
+                    "company_name": metadata.get("company_name"),
+                    "user_metadata": metadata,
+                    "raw_token": token
                 }
                 # Cachear 60 segundos
                 _TOKEN_CACHE[token] = (payload, now + 60)
@@ -93,6 +95,38 @@ def get_current_user_token_payload(credentials: HTTPAuthorizationCredentials = D
         detail="No se pudo validar la sesión de usuario.",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+
+def sync_user_metadata_to_supabase(token: str, metadata_update: dict) -> bool:
+    """
+    Sincroniza configuraciones del usuario (ej. plantillas ERP personalizadas)
+    directamente en la base de datos de Supabase Auth (user_metadata) para que
+    persistan en la nube entre dispositivos y despliegues.
+    """
+    if not token or token == "DEBUG_TOKEN":
+        return False
+
+    supabase_url = getattr(settings, "SUPABASE_URL", "").rstrip('/')
+    supabase_key = getattr(settings, "SUPABASE_KEY", "")
+    if not supabase_url or not supabase_key:
+        return False
+
+    try:
+        with httpx.Client(timeout=8.0) as client:
+            resp = client.put(
+                f"{supabase_url}/auth/v1/user",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "apikey": supabase_key,
+                    "Content-Type": "application/json"
+                },
+                json={"data": metadata_update}
+            )
+            if token in _TOKEN_CACHE:
+                del _TOKEN_CACHE[token]
+            return resp.status_code == 200
+    except Exception:
+        return False
 
 import uuid
 

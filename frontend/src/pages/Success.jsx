@@ -1,9 +1,11 @@
 import React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLanguage } from '../context/LanguageContext';
 
 function Success() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { t } = useLanguage();
   const sessionId = searchParams.get('session_id');
 
   return (
@@ -30,7 +32,7 @@ function Success() {
         letterSpacing: '-0.03em',
         margin: '0 0 12px 0'
       }}>
-        Subscription Activated!
+        {t.misc.successTitle}
       </h2>
 
       <p style={{
@@ -40,7 +42,7 @@ function Success() {
         lineHeight: '1.6',
         margin: '0 0 32px 0'
       }}>
-        Thank you for subscribing. Your account has been upgraded and AI document extraction is now unlocked.
+        {t.misc.successDesc}
       </p>
 
       {sessionId && (
@@ -59,7 +61,7 @@ function Success() {
 
       <button
         className="apple-btn"
-        onClick={() => navigate('/')}
+        onClick={() => navigate('/app/upload')}
         style={{
           padding: '14px 32px',
           backgroundColor: 'var(--accent)',
@@ -72,7 +74,7 @@ function Success() {
           boxShadow: '0 4px 12px rgba(0, 122, 255, 0.25)'
         }}
       >
-        Start Processing Invoices
+        {t.misc.startProcessing}
       </button>
     </div>
   );
